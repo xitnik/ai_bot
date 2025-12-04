@@ -38,11 +38,12 @@ async def startup() -> None:
 async def normalize_message(payload: Dict[str, Any]) -> Message:
     """Унифицируем вход вебчата в DTO Message."""
     try:
+        channel_payload = payload.get("channel_payload") or {}
         return Message(
-            user_id=str(payload["user_id"]),
-            channel=payload.get("channel", "webchat"),
-            text=str(payload.get("text") or ""),
-            attachments=payload.get("attachments"),
+            user_id=str(payload.get("user_id") or channel_payload.get("from_id") or ""),
+            channel=payload.get("channel", channel_payload.get("channel", "webchat")),
+            text=str(payload.get("text") or channel_payload.get("text") or ""),
+            attachments=payload.get("attachments") or channel_payload.get("attachments"),
         )
     except KeyError as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"Missing field: {exc.args[0]}") from exc

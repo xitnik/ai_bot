@@ -3,6 +3,7 @@
 ## Сервисы и entrypoints
 - `main.py` — Conversation Gateway `/channels/webchat/message`, метрики `/metrics`.
 - `sales_agent.py` — агент-продавец `/agents/sales/run`, использует Planner + Tools + Styler (LoRA-модель `yagpt-lora-<role>`).
+- `agents/pricing_agent.py` — доменный расчет цены `/agents/pricing/run` (board feet, породы, обработка, отходы, скидки).
 - `alternatives_agent.py` — подбор альтернатив `/agents/alternatives/run`, in-memory vector store.
 - `procurement/api.py` — закупки: RFQ создание/парсинг/выбор лучшего оффера.
 

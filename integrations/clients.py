@@ -1,17 +1,45 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import Any, Dict, Optional
 
 import httpx
 
 from config import get_settings
+from agents.circuit_breaker import CircuitBreakerRegistry
 from .base import ChannelClient, CRMClient, LeadPayload, MarketplaceClient, StockClient
 from .fake import InMemoryAvito, InMemoryBitrix, InMemoryMAX, InMemoryOneC, InMemoryTelegram
 
 
 def _http_client(timeout: float = 5.0) -> httpx.AsyncClient:
     return httpx.AsyncClient(timeout=timeout)
+
+
+class RateLimiter:
+    """Простой лимитер RPS; для Avito/Bitrix/1C."""
+
+    def __init__(self, rps: float, burst: int = 1) -> None:
+        self.rps = rps
+        self.burst = burst
+        self._tokens = burst
+        self._last = time.monotonic()
+        self._lock = asyncio.Lock()
+
+    async def acquire(self) -> None:
+        async with self._lock:
+            now = time.monotonic()
+            elapsed = now - self._last
+            refill = elapsed * self.rps
+            if refill > 0:
+                self._tokens = min(self.burst, self._tokens + refill)
+            self._last = now
+            if self._tokens >= 1:
+                self._tokens -= 1
+                return
+            sleep_for = max(0.0, (1 - self._tokens) / self.rps)
+            await asyncio.sleep(sleep_for)
+            self._tokens = max(0.0, self._tokens - 1)
 
 
 class TelegramClient(ChannelClient):
@@ -67,10 +95,13 @@ class BitrixClient(CRMClient):
         self.webhook_url = webhook_url or get_settings().integrations.bitrix24_webhook_url
         self._client = client or _http_client()
         self._fake = InMemoryBitrix()
+        self._limiter = RateLimiter(rps=2.0, burst=2)
+        self._circuit = CircuitBreakerRegistry()
 
     async def create_lead(self, payload: LeadPayload) -> Dict[str, Any]:
         if "example" in self.webhook_url or self.webhook_url.startswith("fake-"):
             return await self._fake.create_lead(payload)
+        await self._limiter.acquire()
         data = {
             "fields": {
                 "TITLE": payload.intent or "Lead",
@@ -82,10 +113,16 @@ class BitrixClient(CRMClient):
             },
             "params": {"REGISTER_SONET_EVENT": "Y"},
         }
-        response = await self._client.post(self.webhook_url, json=data)
-        response.raise_for_status()
-        body = response.json()
-        return {"status": "created", "lead_id": body.get("result")}
+        async def _call() -> Dict[str, Any]:
+            response = await self._client.post(self.webhook_url, json=data)
+            response.raise_for_status()
+            body = response.json()
+            return {"status": "created", "lead_id": body.get("result")}
+
+        result = await self._circuit.run("bitrix24", _call, timeout=5.0)
+        if isinstance(result, dict):
+            return result
+        return {"status": "error", "error": "bitrix_call_failed"}
 
 
 class OneCClient(StockClient):
@@ -93,13 +130,22 @@ class OneCClient(StockClient):
         self.base_url = base_url or get_settings().integrations.onec_base_url
         self._client = client or _http_client()
         self._fake = InMemoryOneC()
+        self._limiter = RateLimiter(rps=5.0, burst=3)
+        self._circuit = CircuitBreakerRegistry()
 
     async def get_stock(self, sku: str) -> Dict[str, Any]:
         if "localhost" in self.base_url:
             return await self._fake.get_stock(sku)
-        response = await self._client.get(f"{self.base_url}/stock", params={"sku": sku})
-        response.raise_for_status()
-        return response.json()
+        await self._limiter.acquire()
+        async def _call() -> Dict[str, Any]:
+            response = await self._client.get(f"{self.base_url}/stock", params={"sku": sku})
+            response.raise_for_status()
+            return response.json()
+
+        result = await self._circuit.run("onec", _call, timeout=5.0)
+        if isinstance(result, dict):
+            return result
+        return {"status": "error", "error": "onec_call_failed"}
 
 
 def build_default_clients(use_fake: bool = False) -> dict[str, Any]:

@@ -113,8 +113,34 @@ class AlternativesAgent:
     async def run(self, request: AlternativesRequest) -> AlternativesResult:
         # Эмбеддинг текста запроса.
         query_vector = await self._embedder.embed_text(request.query_text)
+        filters = dict(request.hard_filters)
+        dims = filters.get("dimensions")
+        dims_range = None
+        if isinstance(dims, dict) and all(k in dims for k in ("length", "width", "thickness")):
+            dims_range = {
+                "length": {"min": float(dims["length"]) * (1 - DIMENSION_TOLERANCE_RATIO),
+                           "max": float(dims["length"]) * (1 + DIMENSION_TOLERANCE_RATIO)},
+                "width": {"min": float(dims["width"]) * (1 - DIMENSION_TOLERANCE_RATIO),
+                          "max": float(dims["width"]) * (1 + DIMENSION_TOLERANCE_RATIO)},
+                "thickness": {
+                    "min": float(dims["thickness"]) * (1 - DIMENSION_TOLERANCE_RATIO),
+                    "max": float(dims["thickness"]) * (1 + DIMENSION_TOLERANCE_RATIO),
+                },
+            }
+            filters["dimensions"] = dims_range
+
         # Векторный поиск с жесткими фильтрами.
-        hits = self._store.knn_search(query_vector, request.k, request.hard_filters)
+        hits = self._store.knn_search(query_vector, request.k, filters)
+        # Если подбор урезан по габаритам и результатов мало — добавляем ослабленный поиск.
+        if dims_range and len(hits) < request.k:
+            relaxed_filters = dict(filters)
+            relaxed_filters.pop("dimensions", None)
+            relaxed_hits = self._store.knn_search(query_vector, request.k, relaxed_filters)
+            # Мержим результаты, сохраняя сортировку по score.
+            merged = {hit.product_id: hit for hit in hits}
+            for hit in relaxed_hits:
+                merged.setdefault(hit.product_id, hit)
+            hits = sorted(merged.values(), key=lambda h: h.score, reverse=True)[: request.k]
 
         alternatives: List[AlternativeItem] = []
         for hit in hits:
@@ -130,6 +156,44 @@ class AlternativesAgent:
         return AlternativesResult(alternatives=alternatives)
 
 
+def _ingest_stub_catalog(store: VectorStore, embedder: EmbeddingsClient) -> None:
+    """
+    Доп. загрузка каталога из fixtures/catalog.json.
+    Если файла нет или embedder недоступен (нет ключей) — мягко пропускаем.
+    """
+    import json
+    from pathlib import Path
+    path = Path("fixtures/catalog.json")
+    if not path.exists():
+        return
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return
+    items = payload if isinstance(payload, list) else payload.get("items", [])
+    for item in items:
+        try:
+            meta = {
+                "species": item.get("species"),
+                "grade": item.get("grade"),
+                "dimensions": item.get("dimensions"),
+                "price": item.get("price"),
+                "in_stock": item.get("in_stock", True),
+            }
+            desc = f"{meta.get('species')} {item.get('name','')}"
+            vector = getattr(embedder, "embed_text_sync", None)
+            if callable(vector):  # pragma: no cover - hook для синхронных клиентов
+                vec = vector(desc)
+            else:
+                # Используем async embed_text через небольшую обертку.
+                import asyncio
+                vec = asyncio.get_event_loop().run_until_complete(embedder.embed_text(desc))
+            store.upsert_product(item.get("id", item.get("sku", "")), vec, meta)
+        except Exception:
+            # Если нет env или embedder падает, пропускаем элемент.
+            continue
+
+
 def create_app(
     store: Optional[VectorStore] = None,
     embedder: Optional[EmbeddingsClient] = None,
@@ -137,6 +201,9 @@ def create_app(
     # Отдельная фабрика, чтобы проще подменять зависимости в тестах.
     vector_store = store or InMemoryVectorStore()
     embeddings_client = embedder or EmbeddingsClient()
+    if store is None:
+        # Опциональный инжест каталога; не критичен для работы.
+        _ingest_stub_catalog(vector_store, embeddings_client)
     agent = AlternativesAgent(vector_store, embeddings_client)
 
     app = FastAPI()

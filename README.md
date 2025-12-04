@@ -12,6 +12,7 @@
    uvicorn sales_agent:app --reload --port 8000
    uvicorn alternatives_agent:app --reload --port 8001
    uvicorn procurement.api:router --reload --port 8002
+   uvicorn agents.pricing_agent:app --reload --port 8003
    ```
 4. Метрики доступны по `/metrics` (gateway), здоровье LLM — `/llm/health` (app.py).
 
@@ -24,6 +25,7 @@ python -m tools.eval_runner
 ## Структура
 - `main.py` — gateway, сессии/логирование/метрики.
 - `sales_agent.py` — агент-продавец, LoRA-стилизация.
+- `agents/pricing_agent.py` — доменный расчет цены (порода/обработка/отходы/скидки).
 - `alternatives_agent.py`, `procurement/*` — доп. агенты.
 - `integrations/*` — интерфейсы и моки каналов/CRM/1С.
 - `rag/*`, `ner.py` — baseline RAG/NER.

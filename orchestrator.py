@@ -13,6 +13,7 @@ from agents.supervisor import Supervisor
 from events_logger import log_event
 from models import Message, SessionDTO
 from ner import extract_entities
+from metrics import REGISTRY
 from otel import get_tracer
 from rag.ingest import ingest_from_dir
 from rag.retriever import RagEngine
@@ -20,6 +21,14 @@ from rag.retriever import RagEngine
 _RAG_ENGINE: Optional[RagEngine] = None
 _SUPERVISOR = Supervisor()
 _CIRCUIT = CircuitBreakerRegistry()
+_STATE_TRANSITIONS: Dict[str, str] = {
+    "idle": "sales_followup",
+    "sales": "sales_followup",
+    "pricing": "pricing_quote",
+    "alternatives": "alternatives_suggest",
+    "procurement": "procurement_flow",
+    "calculator": "calculator_flow",
+}
 
 
 def _get_rag_engine() -> Optional[RagEngine]:
@@ -48,6 +57,13 @@ async def enrich_message(message: Message) -> dict:
     return {"normalized_text": normalized, "entities": entities, "knowledge": snippets}
 
 
+def _next_state(current: str, intent: str) -> str:
+    """Простая FSM: если уже в состоянии, удерживаем его, иначе идем по переходу."""
+    if current and current not in ("idle", ""):
+        return current
+    return _STATE_TRANSITIONS.get(intent, "sales_followup")
+
+
 async def route_message(session: SessionDTO, message: Message, context: dict) -> dict:
     """FSM + Supervisor: выбираем интент, агентов, A/B вариант и стейт."""
     agent_input = AgentInput(
@@ -59,10 +75,6 @@ async def route_message(session: SessionDTO, message: Message, context: dict) ->
     )
     decision = _SUPERVISOR.route(agent_input)
 
-    # Если сессия не idle — сохраняем предыдущий стейт как fallback.
-    if session.state not in ("idle", ""):
-        decision.next_state = session.state
-
     payloads = {
         agent: {"message": message.model_dump(), "context": context, "state": session.state}
         for agent in decision.agents
@@ -71,7 +83,7 @@ async def route_message(session: SessionDTO, message: Message, context: dict) ->
         "intent": decision.intent,
         "agents": decision.agents,
         "payloads": payloads,
-        "next_state": decision.next_state,
+        "next_state": _next_state(session.state, decision.intent),
         "variant": decision.variant,
     }
 
@@ -178,21 +190,71 @@ async def gather_agent_calls(decision: dict, trace_id: str, session_id: str) -> 
     return results
 
 
+def _validate_agent_result(agent: str, result: dict) -> tuple[dict, Optional[str]]:
+    """
+    Мини-контракт: ожидаем статус, data и опциональный error.
+    Возвращаем (data, error_text) для удобства.
+    """
+    status = result.get("status")
+    data = result.get("data") if isinstance(result, dict) else None
+    error = None
+    if status != "ok":
+        error = str(result.get("error") or "unknown_error")
+    if data is None:
+        data = {}
+    return data, error
+
+
+async def _register_fallback_lead(
+    message: Message, decision: dict, agent_results: dict, context: dict, trace_id: str
+) -> None:
+    """
+    При деградации собираем минимальные контакты и создаем лид в CRM.
+    Заглушка: использует call_integration(bitrix24) с user_id/текстом; доп. поля можно расширить.
+    """
+    contacts = {"phone": None, "email": None}
+    for ent in context.get("entities", []):
+        if ent.get("type") == "phone":
+            contacts["phone"] = ent.get("value")
+        if ent.get("type") == "email":
+            contacts["email"] = ent.get("value")
+    await call_integration(
+        "bitrix24",
+        {
+            "user_id": message.user_id,
+            "comment": f"[fallback] {message.text}",
+            "intent": decision.get("intent"),
+            "idempotency_key": decision.get("next_state"),
+            **contacts,
+        },
+        trace_id,
+        decision.get("next_state") or message.user_id,
+    )
+
+
 async def assemble_reply(
     message: Message, decision: dict, agent_results: dict, context: dict
 ) -> tuple[str, bool]:
     """Собираем финальный ответ; bool показывает наличие деградации."""
     fallback_needed = any(res.get("status") == "error" for res in agent_results.values())
+    validated: Dict[str, dict] = {}
+    errors: List[str] = []
+    for agent, res in agent_results.items():
+        data, err = _validate_agent_result(agent, res)
+        validated[agent] = data
+        if err:
+            errors.append(f"{agent}:{err}")
     if fallback_needed:
-        return (
-            "Мы обработали запрос, но часть сервисов недоступна. Скоро вернемся с деталями.",
-            True,
-        )
+        REGISTRY.counter("fallback_total").inc()
+        await _register_fallback_lead(message, decision, agent_results, context, context.get("trace_id", ""))
+        msg = "Мы обработали запрос, но часть сервисов недоступна. Скоро вернемся с деталями."
+        if errors:
+            msg += f" ({'; '.join(errors)})"
+        return (msg, True)
 
     # Конкатенируем основные ответы агентов в один текстовый реплай.
     snippets = []
-    for agent, result in agent_results.items():
-        data = result.get("data") or {}
+    for agent, data in validated.items():
         summary = data.get("summary") or data.get("echo") or "готово"
         snippets.append(f"{agent}: {summary}")
     if not snippets:
