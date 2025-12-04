@@ -1,0 +1,15 @@
+model_list:
+  - name: gpt5
+    model: openai/gpt-5
+    api_key: ${OPENAI_API_KEY}
+  - name: yagpt-lora-sales
+    model: gpt://${YC_FOLDER_ID}/yandexgpt-lite/${LORA_ADAPTER_ID}
+    api_base: https://llm.api.cloud.yandex.net/v1
+    api_key: ${YANDEX_API_KEY}
+    extra_headers:
+      OpenAI-Project: "${YC_FOLDER_ID}"
+router_settings:
+  num_retries: 2
+  timeout: 60
+  default_fallbacks:
+    - gpt5

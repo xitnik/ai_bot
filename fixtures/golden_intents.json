@@ -1,0 +1,7 @@
+[
+  {"text": "need price for sku-1", "intent": "pricing"},
+  {"text": "show alternative options", "intent": "alternatives"},
+  {"text": "i want to buy now", "intent": "procurement"},
+  {"text": "calculate 2 + 2", "intent": "calculator"},
+  {"text": "general question about sales", "intent": "sales"}
+]

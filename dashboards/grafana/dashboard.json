@@ -1,0 +1,35 @@
+{
+  "title": "Bot Suite Overview",
+  "description": "Placeholder dashboard for local Prometheus scrape of /metrics endpoints.",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Requests total",
+      "targets": [
+        {
+          "expr": "requests_total"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Sales agent calls",
+      "targets": [
+        {
+          "expr": "sales_agent_calls_total"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Planner latency avg",
+      "targets": [
+        {
+          "expr": "planner_latency_avg"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 38,
+  "version": 1
+}
