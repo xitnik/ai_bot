@@ -30,4 +30,7 @@ def test_pricing_agent_calculates_multistep_quote() -> None:
     assert data["items"][0]["volume_board_feet"] > 9
     assert data["items"][0]["species_multiplier"] > 1
     assert data["items"][0]["processing_multiplier"] > 1
-    assert "bulk discount" in " ".join(data["discounts"]) or data["items"][0]["discount_applied"] >= 0
+    assert (
+        "bulk discount" in " ".join(data["discounts"])
+        or data["items"][0]["discount_applied"] >= 0
+    )

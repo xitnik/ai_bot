@@ -3,7 +3,13 @@ from __future__ import annotations
 import asyncio
 
 from integrations.base import LeadPayload
-from integrations.fake import InMemoryAvito, InMemoryBitrix, InMemoryMAX, InMemoryOneC, InMemoryTelegram
+from integrations.fake import (
+    InMemoryAvito,
+    InMemoryBitrix,
+    InMemoryMAX,
+    InMemoryOneC,
+    InMemoryTelegram,
+)
 
 
 def test_fake_crm_idempotency():

@@ -1,32 +1,32 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Annotated, Any, Dict
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import JSONResponse, PlainTextResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import get_settings
 import db
+from config import get_settings
 from events_logger import log_event
 from metrics import REGISTRY
 from models import Message, SessionDTO
+from observability import get_service_name, init_logging
 from orchestrator import (
     assemble_reply,
+    call_integration,
     enrich_message,
     gather_agent_calls,
     route_message,
-    call_integration,
 )
-from observability import get_service_name, init_logging
 from otel import get_tracer
 from session_store import MySQLSessionStore
 
 app = FastAPI(title="Conversation Gateway")
 session_store = MySQLSessionStore()
+DbSession = Annotated[AsyncSession, Depends(db.get_db_session)]
 
 
 @app.on_event("startup")
@@ -91,7 +91,7 @@ async def refresh_session_cache(
 
 @app.post("/channels/webchat/message")
 async def handle_webchat_message(
-    payload: Dict[str, Any], db_session: AsyncSession = Depends(db.get_db_session)
+    payload: Dict[str, Any], db_session: DbSession
 ) -> JSONResponse:
     message = await normalize_message(payload)
     session_dto = await ensure_session(db_session, message)

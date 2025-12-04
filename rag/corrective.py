@@ -26,7 +26,9 @@ class RetrievalEvaluator:
     def __init__(self, min_score: float = 0.2) -> None:
         self._min_score = min_score
 
-    def evaluate(self, query: str, docs: Sequence[ScoredDocument], answer: str | None = None) -> EvaluationResult:
+    def evaluate(
+        self, query: str, docs: Sequence[ScoredDocument], answer: str | None = None
+    ) -> EvaluationResult:
         if not docs:
             return EvaluationResult(score=0.0, action="retry", reason="no_docs")
         top_score = docs[0].score
@@ -59,9 +61,7 @@ class RetrievalEvaluator:
 
 
 class CorrectiveRag:
-    """
-    Corrective RAG (CRAG) runner: initial retrieval+answer, evaluate, retry with rewritten query if needed.
-    """
+    """Corrective RAG: retrieve, answer, evaluate; retry with rewritten query if needed."""
 
     def __init__(
         self,
@@ -73,13 +73,17 @@ class CorrectiveRag:
         self._evaluator = evaluator
         self._max_retries = max_retries
 
-    async def run(self, query: str, generate_answer, filters: Dict[str, Any]) -> tuple[str, List[ScoredDocument], Dict[str, Any]]:
+    async def run(
+        self, query: str, generate_answer, filters: Dict[str, Any]
+    ) -> tuple[str, List[ScoredDocument], Dict[str, Any]]:
         attempts: List[Dict[str, Any]] = []
         retries = 0
         docs = await self._retriever.retrieve(query, filters=filters)
         answer = generate_answer(docs)
         eval_result = self._evaluator.evaluate(query, docs, answer)
-        attempts.append({"query": query, "score": eval_result.score, "reason": eval_result.reason})
+        attempts.append(
+            {"query": query, "score": eval_result.score, "reason": eval_result.reason}
+        )
         while eval_result.action == "retry" and retries < self._max_retries:
             retries += 1
             REGISTRY.counter("rag_crag_retries_count").inc()
@@ -87,7 +91,9 @@ class CorrectiveRag:
             docs = await self._retriever.retrieve(rewritten, filters=filters)
             answer = generate_answer(docs)
             eval_result = self._evaluator.evaluate(rewritten, docs, answer)
-            attempts.append({"query": rewritten, "score": eval_result.score, "reason": eval_result.reason})
+            attempts.append(
+                {"query": rewritten, "score": eval_result.score, "reason": eval_result.reason}
+            )
         if eval_result.action != "accept":
             REGISTRY.counter("rag_crag_fallback_rate").inc()
             answer = "Недостаточно данных, чтобы ответить точно. Нужны дополнительные документы."
@@ -96,7 +102,8 @@ class CorrectiveRag:
 
     async def _rewrite_query(self, query: str) -> str:
         prompt = (
-            "Переформулируй запрос для поиска в базе документов, сохраняя смысл. Кратко, без лишних слов."
+            "Переформулируй запрос для поиска в базе документов, сохраняя смысл. Кратко, "
+            "без лишних слов."
         )
         try:
             completion = await asyncio.to_thread(

@@ -68,10 +68,19 @@ class RagPipeline:
         await index.add_documents(documents_with_vectors)
         if get_settings().rag.enable_knowledge_graph:
             await KG.bulk_add_documents(documents_with_vectors)
-        retriever = HybridRetriever(index, embedder, documents=documents_with_vectors, config=retriever_config)
-        return cls(retriever=retriever, embedder=embedder, vector_index=index, documents=documents_with_vectors)
+        retriever = HybridRetriever(
+            index, embedder, documents=documents_with_vectors, config=retriever_config
+        )
+        return cls(
+            retriever=retriever,
+            embedder=embedder,
+            vector_index=index,
+            documents=documents_with_vectors,
+        )
 
-    async def answer(self, query: str, session: Optional[SessionContext] = None, mode: Optional[str] = None) -> RagResult:
+    async def answer(
+        self, query: str, session: Optional[SessionContext] = None, mode: Optional[str] = None
+    ) -> RagResult:
         session = session or SessionContext()
         rag_settings = get_settings().rag
         effective_mode = mode or rag_settings.default_mode
@@ -81,7 +90,9 @@ class RagPipeline:
             return RagResult(answer=answer, used_documents=[], debug_info={"mode": "skipped"})
 
         if effective_mode == "self-rag":
-            orchestrator = SelfRagOrchestrator(self._retriever, max_iterations=rag_settings.max_selfrag_iterations)
+            orchestrator = SelfRagOrchestrator(
+                self._retriever, max_iterations=rag_settings.max_selfrag_iterations
+            )
             try:
                 answer, docs, debug = await orchestrator.run(query)
                 debug["mode"] = "self-rag"
@@ -91,11 +102,17 @@ class RagPipeline:
 
         filters = self._build_filters(session)
         retrieved = await self._retrieve_with_filters(query, filters, session)
-        entities = session.entities if session and session.entities is not None else extract_entities(query)
+        entities = (
+            session.entities
+            if session and session.entities is not None
+            else extract_entities(query)
+        )
 
         if effective_mode == "crag":
             evaluator = RetrievalEvaluator(min_score=rag_settings.retriever_min_score)
-            crag = CorrectiveRag(self._retriever, evaluator, max_retries=rag_settings.max_crag_retries)
+            crag = CorrectiveRag(
+                self._retriever, evaluator, max_retries=rag_settings.max_crag_retries
+            )
 
             def _gen_answer(docs: List[ScoredDocument]) -> str:
                 return _llm_answer(query, docs, entities)
@@ -114,7 +131,9 @@ class RagPipeline:
         }
         return RagResult(answer=answer, used_documents=retrieved, debug_info=debug)
 
-    async def retrieve(self, query: str, session: Optional[SessionContext] = None) -> List[ScoredDocument]:
+    async def retrieve(
+        self, query: str, session: Optional[SessionContext] = None
+    ) -> List[ScoredDocument]:
         filters = self._build_filters(session)
         return await self._retrieve_with_filters(query, filters)
 
@@ -124,7 +143,9 @@ class RagPipeline:
         retrieval_start = time.perf_counter()
         retrieved = await self._retriever.retrieve(query, filters=filters)
         retrieved = await self._augment_with_kg(retrieved, session)
-        REGISTRY.histogram("rag_retrieval_latency_ms").observe((time.perf_counter() - retrieval_start) * 1000)
+        REGISTRY.histogram("rag_retrieval_latency_ms").observe(
+            (time.perf_counter() - retrieval_start) * 1000
+        )
         REGISTRY.histogram("rag_retrieved_docs_count").observe(len(retrieved))
         return retrieved
 
@@ -148,7 +169,9 @@ class RagPipeline:
         filters.update(session.metadata or {})
         return filters
 
-    async def _augment_with_kg(self, retrieved: List[ScoredDocument], session: Optional[SessionContext]) -> List[ScoredDocument]:
+    async def _augment_with_kg(
+        self, retrieved: List[ScoredDocument], session: Optional[SessionContext]
+    ) -> List[ScoredDocument]:
         settings = get_settings().rag
         if not settings.enable_knowledge_graph or not session:
             return retrieved
@@ -179,7 +202,10 @@ class RagPipeline:
             completion = await asyncio.to_thread(
                 chat,
                 "gpt5",
-                [{"role": "system", "content": "Short helpful assistant."}, {"role": "user", "content": query}],
+                [
+                    {"role": "system", "content": "Short helpful assistant."},
+                    {"role": "user", "content": query},
+                ],
                 temperature=0.3,
             )
             return _extract_text(completion)
@@ -187,7 +213,9 @@ class RagPipeline:
             return "Для этого запроса не требуется поиск по базе."
 
 
-async def _embed_documents(embedder: EmbeddingsClient, documents: Sequence[Document]) -> List[Document]:
+async def _embed_documents(
+    embedder: EmbeddingsClient, documents: Sequence[Document]
+) -> List[Document]:
     embedded: List[Document] = []
     for doc in documents:
         try:
@@ -231,7 +259,9 @@ def _extract_text(completion: Any) -> str:
     return getattr(first, "text", "") or ""
 
 
-def _llm_answer(query: str, retrieved: Sequence[ScoredDocument], entities: Sequence[Dict[str, Any]]) -> str:
+def _llm_answer(
+    query: str, retrieved: Sequence[ScoredDocument], entities: Sequence[Dict[str, Any]]
+) -> str:
     context_blocks = _format_context(retrieved)
     system_prompt = (
         "You are a retrieval-augmented assistant for sales/procurement.\n"
@@ -247,7 +277,10 @@ def _llm_answer(query: str, retrieved: Sequence[ScoredDocument], entities: Seque
     try:
         completion = chat(
             "gpt5",
-            [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
             temperature=0,
         )
         return _extract_text(completion)
@@ -273,6 +306,8 @@ async def rag_answer(query: str, session: Optional[SessionContext] = None) -> Ra
     return await pipeline.answer(query, session=session or SessionContext())
 
 
-async def rag_retrieve(query: str, session: Optional[SessionContext] = None) -> List[ScoredDocument]:
+async def rag_retrieve(
+    query: str, session: Optional[SessionContext] = None
+) -> List[ScoredDocument]:
     pipeline = await _get_pipeline()
     return await pipeline.retrieve(query, session=session or SessionContext())

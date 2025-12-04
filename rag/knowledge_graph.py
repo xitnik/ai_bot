@@ -17,7 +17,11 @@ class AsyncKnowledgeGraph:
         self._session_factory = session_factory or db.AsyncSessionLocal
 
     async def _upsert_entity(
-        self, session: db.AsyncSession, entity_id: str, entity_type: str, attributes: Optional[Dict[str, str]]
+        self,
+        session: db.AsyncSession,
+        entity_id: str,
+        entity_type: str,
+        attributes: Optional[Dict[str, str]],
     ) -> None:
         stmt = mysql_insert(db.KGEntityModel).values(
             entity_id=entity_id,

@@ -4,7 +4,6 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 AlternativeType = Literal["direct", "functional", "price_low", "price_high"]
 
 

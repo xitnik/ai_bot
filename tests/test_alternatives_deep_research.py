@@ -11,10 +11,9 @@ from agents.alternatives_deep_research_agent import (
     WebSearchClient,
     create_app,
 )
-from alternatives_deep_models import AlternativesDeepResearchRequest
-from alternatives_models import AlternativeItem, AlternativesResult
 from alternatives_agent import AlternativesAgent
-from alternatives_deep_models import DeepResearchSource
+from alternatives_deep_models import AlternativesDeepResearchRequest, DeepResearchSource
+from alternatives_models import AlternativeItem, AlternativesResult
 
 
 class FakeAlternativesAgent(AlternativesAgent):
@@ -39,7 +38,13 @@ class FakeAlternativesAgent(AlternativesAgent):
 class FakeSearchClient(WebSearchClient):
     """Фейковый поиск возвращает статические источники."""
 
-    async def search_forums(self, query: str, k: int = 5, trace_id: str | None = None, session_id: str | None = None) -> List[DeepResearchSource]:  # type: ignore[override]
+    async def search_forums(
+        self,
+        query: str,
+        k: int = 5,
+        trace_id: str | None = None,
+        session_id: str | None = None,
+    ) -> List[DeepResearchSource]:  # type: ignore[override]
         return [
             DeepResearchSource(
                 url="https://forum.example.com/thread1",
@@ -50,7 +55,13 @@ class FakeSearchClient(WebSearchClient):
             )
         ]
 
-    async def search_reviews(self, query: str, k: int = 5, trace_id: str | None = None, session_id: str | None = None) -> List[DeepResearchSource]:  # type: ignore[override]
+    async def search_reviews(
+        self,
+        query: str,
+        k: int = 5,
+        trace_id: str | None = None,
+        session_id: str | None = None,
+    ) -> List[DeepResearchSource]:  # type: ignore[override]
         return [
             DeepResearchSource(
                 url="https://reviews.example.com/item1",
@@ -61,7 +72,13 @@ class FakeSearchClient(WebSearchClient):
             )
         ]
 
-    async def search_articles(self, query: str, k: int = 5, trace_id: str | None = None, session_id: str | None = None) -> List[DeepResearchSource]:  # type: ignore[override]
+    async def search_articles(
+        self,
+        query: str,
+        k: int = 5,
+        trace_id: str | None = None,
+        session_id: str | None = None,
+    ) -> List[DeepResearchSource]:  # type: ignore[override]
         return []
 
 

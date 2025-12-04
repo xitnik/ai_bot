@@ -7,14 +7,14 @@ from fastapi import FastAPI
 import db
 from alternatives_models import (
     AlternativeItem,
-    AlternativeType,
     AlternativesRequest,
     AlternativesResult,
+    AlternativeType,
 )
 from embeddings_client import EmbeddingsClient
-from vector_index import MySQLVectorStore, VectorStore
 from rag.pipeline import SessionContext as RagSessionContext
 from rag.pipeline import rag_retrieve
+from vector_index import MySQLVectorStore, VectorStore
 
 DIMENSION_TOLERANCE_RATIO = 0.05
 PRICE_TOLERANCE_RATIO = 0.10
@@ -41,7 +41,9 @@ def _dimensions_close(
     return True
 
 
-def _price_delta_percent(candidate_price: Optional[float], base_price: Optional[float]) -> Optional[float]:
+def _price_delta_percent(
+    candidate_price: Optional[float], base_price: Optional[float]
+) -> Optional[float]:
     """Возвращает процентное отклонение цены кандидата от базовой."""
     if candidate_price is None or base_price is None or base_price == 0:
         return None
@@ -121,17 +123,21 @@ class AlternativesAgent:
         dims_range = None
         if isinstance(dims, dict) and all(k in dims for k in ("length", "width", "thickness")):
             dims_range = {
-                "length": {"min": float(dims["length"]) * (1 - DIMENSION_TOLERANCE_RATIO),
-                           "max": float(dims["length"]) * (1 + DIMENSION_TOLERANCE_RATIO)},
-                "width": {"min": float(dims["width"]) * (1 - DIMENSION_TOLERANCE_RATIO),
-                          "max": float(dims["width"]) * (1 + DIMENSION_TOLERANCE_RATIO)},
+                "length": {
+                    "min": float(dims["length"]) * (1 - DIMENSION_TOLERANCE_RATIO),
+                    "max": float(dims["length"]) * (1 + DIMENSION_TOLERANCE_RATIO),
+                },
+                "width": {
+                    "min": float(dims["width"]) * (1 - DIMENSION_TOLERANCE_RATIO),
+                    "max": float(dims["width"]) * (1 + DIMENSION_TOLERANCE_RATIO),
+                },
                 "thickness": {
                     "min": float(dims["thickness"]) * (1 - DIMENSION_TOLERANCE_RATIO),
                     "max": float(dims["thickness"]) * (1 + DIMENSION_TOLERANCE_RATIO),
                 },
             }
             filters["dimensions"] = dims_range
-        # Цена используется при классификации, но не как жесткий фильтр, чтобы не потерять ближние варианты.
+        # Цена только для классификации, фильтр снимаем, чтобы не потерять близкие варианты.
         filters.pop("price", None)
 
         # Векторный поиск с жесткими фильтрами.
@@ -149,7 +155,9 @@ class AlternativesAgent:
 
         alternatives: List[AlternativeItem] = []
         for hit in hits:
-            alt_type, reason = classify_alternative(hit.metadata, request.hard_filters, request.price_band)
+            alt_type, reason = classify_alternative(
+                hit.metadata, request.hard_filters, request.price_band
+            )
             alternatives.append(
                 AlternativeItem(
                     product_id=hit.product_id,
@@ -166,7 +174,11 @@ class AlternativesAgent:
             return []
         try:
             session = RagSessionContext(
-                product_id=request.hard_filters.get("sku") if isinstance(request.hard_filters, dict) else None,
+                product_id=(
+                    request.hard_filters.get("sku")
+                    if isinstance(request.hard_filters, dict)
+                    else None
+                ),
                 lang="ru",
             )
             docs = await rag_retrieve(request.query_text, session=session)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+
 # Для прогонов локально убедитесь, что установлены fastapi и её зависимости.
 from fastapi.testclient import TestClient
 

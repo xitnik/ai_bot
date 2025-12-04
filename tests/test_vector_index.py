@@ -13,8 +13,16 @@ def _sample_dims(length: float) -> dict:
 @pytest.mark.asyncio
 async def test_filters_by_species_grade_and_stock() -> None:
     store = InMemoryVectorStore()
-    await store.upsert_product("oak", [1.0, 0.0], {"species": "oak", "grade": "A", "in_stock": True})
-    await store.upsert_product("pine", [0.0, 1.0], {"species": "pine", "grade": "A", "in_stock": True})
+    await store.upsert_product(
+        "oak",
+        [1.0, 0.0],
+        {"species": "oak", "grade": "A", "in_stock": True},
+    )
+    await store.upsert_product(
+        "pine",
+        [0.0, 1.0],
+        {"species": "pine", "grade": "A", "in_stock": True},
+    )
 
     hits = await store.knn_search(
         [1.0, 0.0],

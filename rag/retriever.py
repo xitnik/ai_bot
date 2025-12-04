@@ -73,7 +73,9 @@ class HybridRetriever:
     def _idf(self, term: str) -> float:
         return math.log((1 + len(self._documents)) / (1 + self._lexical_df.get(term, 0))) + 1.0
 
-    def _bm25(self, query_tokens: List[str], doc_tokens: List[str], k1: float = 1.5, b: float = 0.75) -> float:
+    def _bm25(
+        self, query_tokens: List[str], doc_tokens: List[str], k1: float = 1.5, b: float = 0.75
+    ) -> float:
         if not doc_tokens:
             return 0.0
         doc_len = len(doc_tokens)
@@ -88,7 +90,9 @@ class HybridRetriever:
             score += idf * (tf * (k1 + 1)) / denom
         return score
 
-    def _lexical_search(self, query: str, filters: Optional[Dict[str, Any]]) -> List[ScoredDocument]:
+    def _lexical_search(
+        self, query: str, filters: Optional[Dict[str, Any]]
+    ) -> List[ScoredDocument]:
         tokens = _tokenize(query)
         results: List[ScoredDocument] = []
         for doc in self._documents:
@@ -101,19 +105,25 @@ class HybridRetriever:
         results.sort(key=lambda item: item.score, reverse=True)
         return results[: self._config.lexical_top_k]
 
-    async def _dense_search(self, query: str, filters: Optional[Dict[str, Any]]) -> List[ScoredDocument]:
+    async def _dense_search(
+        self, query: str, filters: Optional[Dict[str, Any]]
+    ) -> List[ScoredDocument]:
         try:
             embedding = await self._embedder.get_text_embedding(query)
         except Exception:
             embedding = _hash_embedding(query)
-        return await self._index.search(embedding, filters=filters or {}, top_k=self._config.dense_top_k)
+        return await self._index.search(
+            embedding, filters=filters or {}, top_k=self._config.dense_top_k
+        )
 
     def _metadata_matches(self, metadata: Dict[str, Any], filters: Dict[str, Any]) -> bool:
         from vector_index import _passes_filters  # type: ignore import-not-found
 
         return _passes_filters(metadata, filters)
 
-    async def retrieve(self, query: str, filters: Optional[Dict[str, Any]] = None) -> List[ScoredDocument]:
+    async def retrieve(
+        self, query: str, filters: Optional[Dict[str, Any]] = None
+    ) -> List[ScoredDocument]:
         cache_key = self._cache_key(query, filters or {})
         if cache_key in self._cache:
             return list(self._cache[cache_key])
@@ -144,7 +154,9 @@ class HybridRetriever:
         self._cache[cache_key] = list(result)
         return result
 
-    async def _maybe_rerank(self, query: str, candidates: List[ScoredDocument]) -> List[ScoredDocument]:
+    async def _maybe_rerank(
+        self, query: str, candidates: List[ScoredDocument]
+    ) -> List[ScoredDocument]:
         if not candidates:
             return candidates
         reranker = await self._get_reranker()
@@ -158,7 +170,7 @@ class HybridRetriever:
         except Exception:
             return candidates
         reranked: List[ScoredDocument] = []
-        for cand, score in zip(top_candidates, scores):
+        for cand, score in zip(top_candidates, scores, strict=False):
             reranked.append(ScoredDocument(document=cand.document, score=float(score)))
         reranked.sort(key=lambda item: item.score, reverse=True)
         return reranked + candidates[len(top_candidates) :]

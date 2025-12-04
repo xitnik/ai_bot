@@ -7,7 +7,6 @@ from sqlalchemy import (
     JSON,
     Boolean,
     DateTime,
-    Float,
     ForeignKey,
     Index,
     Integer,
@@ -21,7 +20,12 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from config import get_settings
@@ -169,8 +173,12 @@ class KGEdgeModel(Base):
     __tablename__ = "kg_edges"
 
     edge_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    src_id: Mapped[str] = mapped_column(String(128), ForeignKey("kg_entities.entity_id"), nullable=False)
-    dst_id: Mapped[str] = mapped_column(String(128), ForeignKey("kg_entities.entity_id"), nullable=False)
+    src_id: Mapped[str] = mapped_column(
+        String(128), ForeignKey("kg_entities.entity_id"), nullable=False
+    )
+    dst_id: Mapped[str] = mapped_column(
+        String(128), ForeignKey("kg_entities.entity_id"), nullable=False
+    )
     relation: Mapped[str] = mapped_column(String(64), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

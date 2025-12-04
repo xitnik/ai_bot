@@ -16,7 +16,13 @@ def test_supervisor_routes_intents_and_variant_deterministic():
 
 def test_supervisor_adds_deep_research_for_alternatives():
     sup = Supervisor(variants=("control",))
-    payload = AgentInput(message="Need alternative compare vs", user_id="u2", session_id="s2", intent="", context={})
+    payload = AgentInput(
+        message="Need alternative compare vs",
+        user_id="u2",
+        session_id="s2",
+        intent="",
+        context={},
+    )
     decision = sup.route(payload)
     assert decision.intent == "alternatives"
     assert "alternatives" in decision.agents

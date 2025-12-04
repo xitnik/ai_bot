@@ -39,7 +39,8 @@ class SelfRagOrchestrator:
         content = (
             "You are a self-reflective assistant. Produce a short plan and insert retrieval tags.\n"
             "Use markers <RETRIEVE query=\"...\"></RETRIEVE> where external context is needed.\n"
-            "Example: 'Check discount policy <RETRIEVE query=\"pricing discounts 2024\"> then answer.'\n"
+            "Example: 'Check discount policy <RETRIEVE query=\"pricing discounts 2024\"> "
+            "then answer.'\n"
             "Keep it concise."
         )
         return [
@@ -47,19 +48,27 @@ class SelfRagOrchestrator:
             {"role": "user", "content": f"Task: {query}"},
         ]
 
-    def _answer_prompt(self, query: str, snippets: Sequence[ScoredDocument], plan: str) -> List[Dict[str, str]]:
+    def _answer_prompt(
+        self, query: str, snippets: Sequence[ScoredDocument], plan: str
+    ) -> List[Dict[str, str]]:
         context_lines = [
             f"[doc:{item.document.id}] {item.document.text}" for item in snippets
         ]
         context_block = "\n".join(context_lines)
         critique_note = (
-            "After the answer, add a CRITIQUE section with self-assessed factuality and which docs were used."
+            "After the answer, add a CRITIQUE section with self-assessed factuality and "
+            "which docs were used."
         )
         return [
-            {"role": "system", "content": "You are a retrieval-augmented assistant. Only use provided context."},
+            {
+                "role": "system",
+                "content": "You are a retrieval-augmented assistant. Only use provided context.",
+            },
             {
                 "role": "user",
-                "content": f"Plan: {plan}\nQuestion: {query}\nContext:\n{context_block}\n\n{critique_note}",
+                "content": (
+                    f"Plan: {plan}\nQuestion: {query}\nContext:\n{context_block}\n\n{critique_note}"
+                ),
             },
         ]
 
@@ -77,7 +86,9 @@ class SelfRagOrchestrator:
             retrieved.extend(results)
             iterations += 1
         REGISTRY.counter("rag_selfrag_iterations").inc(iterations)
-        completion = chat("gpt5", self._answer_prompt(query, retrieved, plan.raw_plan), temperature=0)
+        completion = chat(
+            "gpt5", self._answer_prompt(query, retrieved, plan.raw_plan), temperature=0
+        )
         answer = _extract_text(completion)
         debug = {"plan": plan.raw_plan, "queries": plan.queries, "iterations": iterations}
         return answer, retrieved, debug

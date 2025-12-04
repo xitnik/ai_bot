@@ -5,7 +5,7 @@ import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict
 
 from models import Message, SessionDTO
 from orchestrator import enrich_message, route_message
@@ -37,7 +37,12 @@ async def eval_intents(fixtures_path: Path) -> Dict[str, EvalResult]:
             started_at=sample.get("started_at") or __import__("datetime").datetime.utcnow(),  # type: ignore[arg-type]
             last_event_at=sample.get("last_event_at") or __import__("datetime").datetime.utcnow(),  # type: ignore[arg-type]
         )
-        msg = Message(user_id=session.user_id, channel="webchat", text=sample["text"], attachments=None)
+        msg = Message(
+            user_id=session.user_id,
+            channel="webchat",
+            text=sample["text"],
+            attachments=None,
+        )
         context = await enrich_message(msg)
         decision = await route_message(session, msg, context)
         overall.total += 1
@@ -59,7 +64,9 @@ async def eval_rag(fixtures_path: Path) -> EvalResult:
         expected_docs = sample.get("expected_docs") or []
         if not query or not expected_docs:
             continue
-        session = SessionContext(client_id=sample.get("client_id"), product_id=sample.get("product_id"))
+        session = SessionContext(
+            client_id=sample.get("client_id"), product_id=sample.get("product_id")
+        )
         retrieved = await rag_retrieve(query, session=session)
         retrieved_ids = {item.document.id for item in retrieved}
         result.total += 1

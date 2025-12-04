@@ -147,7 +147,12 @@ def _fast_entities(text: str) -> NerResult:
     ]:
         for match in regex.finditer(text):
             entities.append(
-                NerEntity(text=match.group(0), span=(match.start(), match.end()), type=etype, source="fast")
+                NerEntity(
+                    text=match.group(0),
+                    span=(match.start(), match.end()),
+                    type=etype,
+                    source="fast",
+                )
             )
     entities.extend(_dict_to_entities(text, WOOD_SPECIES, "wood_species"))
     entities.extend(_dict_to_entities(text, APPLICATION_SYNONYMS, "application"))

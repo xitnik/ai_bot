@@ -20,7 +20,12 @@ class FakeEmbedder:
 @pytest.mark.asyncio
 async def test_hybrid_retriever_prefers_matching_doc() -> None:
     docs = [
-        Document(id="match", text="pricing policy and discount rules", metadata={"lang": "en"}, embedding=[1.0]),
+        Document(
+            id="match",
+            text="pricing policy and discount rules",
+            metadata={"lang": "en"},
+            embedding=[1.0],
+        ),
         Document(id="other", text="unrelated text", metadata={"lang": "en"}, embedding=[0.0]),
     ]
     store = InMemoryVectorStore()
@@ -29,7 +34,9 @@ async def test_hybrid_retriever_prefers_matching_doc() -> None:
         store,
         FakeEmbedder(),
         documents=docs,
-        config=RetrieverConfig(enable_reranker=False, lexical_top_k=2, dense_top_k=2, hybrid_top_k=2),
+        config=RetrieverConfig(
+            enable_reranker=False, lexical_top_k=2, dense_top_k=2, hybrid_top_k=2
+        ),
     )
 
     results = await retriever.retrieve("discount policy", filters={"lang": "en"})
@@ -41,7 +48,12 @@ async def test_hybrid_retriever_prefers_matching_doc() -> None:
 @pytest.mark.asyncio
 async def test_rag_pipeline_answer_uses_chat(monkeypatch) -> None:
     docs = [
-        Document(id="d1", text="pricing policy doc", metadata={"source": "fixture", "lang": "en"}, embedding=[1.0]),
+        Document(
+            id="d1",
+            text="pricing policy doc",
+            metadata={"source": "fixture", "lang": "en"},
+            embedding=[1.0],
+        ),
     ]
     store = InMemoryVectorStore()
     await store.add_documents(docs)
@@ -50,7 +62,9 @@ async def test_rag_pipeline_answer_uses_chat(monkeypatch) -> None:
         store,
         embedder,
         documents=docs,
-        config=RetrieverConfig(enable_reranker=False, lexical_top_k=1, dense_top_k=1, hybrid_top_k=1),
+        config=RetrieverConfig(
+            enable_reranker=False, lexical_top_k=1, dense_top_k=1, hybrid_top_k=1
+        ),
     )
 
     # Fake chat completion object.
@@ -59,7 +73,9 @@ async def test_rag_pipeline_answer_uses_chat(monkeypatch) -> None:
     )
     monkeypatch.setattr("rag.pipeline.chat", lambda *args, **kwargs: completion)
 
-    pipeline = RagPipeline(retriever=retriever, embedder=embedder, vector_index=store, documents=docs)
+    pipeline = RagPipeline(
+        retriever=retriever, embedder=embedder, vector_index=store, documents=docs
+    )
     result = await pipeline.answer("pricing question", session=SessionContext(lang="en"))
 
     assert result.answer == "final answer"

@@ -4,6 +4,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any, Dict
 
+
 # Простая структурированная запись в stdout, чтобы потом сменить на OTEL/БД.
 def log_event(event_type: str, payload: Dict[str, Any]) -> None:
     entry = {

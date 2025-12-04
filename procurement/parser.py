@@ -5,8 +5,9 @@ import json
 import logging
 from typing import Any, Optional
 
-from . import schemas
 from llm_client import chat
+
+from . import schemas
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,10 @@ async def parse_vendor_reply(raw_text: str) -> schemas.OfferCore:
             chat,
             "gpt5",
             messages,
-            response_format={"type": "json_schema", "json_schema": schemas.offer_core_json_schema()},
+            response_format={
+                "type": "json_schema",
+                "json_schema": schemas.offer_core_json_schema(),
+            },
             temperature=0,
         )
     except Exception:

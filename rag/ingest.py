@@ -5,7 +5,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
 
 DEFAULT_CHUNK_SIZE = 512
 DEFAULT_CHUNK_OVERLAP = 80
@@ -131,7 +131,9 @@ def _build_doc_id(path: Path, idx: int) -> str:
     return f"{path.stem}:{idx}"
 
 
-def _base_metadata(path: Path, source_type: str, extra: Dict[str, Any] | None = None) -> Dict[str, Any]:
+def _base_metadata(
+    path: Path, source_type: str, extra: Dict[str, Any] | None = None
+) -> Dict[str, Any]:
     meta: Dict[str, Any] = {
         "source": str(path),
         "source_type": source_type,

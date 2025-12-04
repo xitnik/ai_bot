@@ -11,14 +11,14 @@ from agents.base import AgentInput
 from agents.circuit_breaker import CircuitBreakerRegistry
 from agents.supervisor import Supervisor
 from events_logger import log_event
+from metrics import REGISTRY
 from models import Message, SessionDTO
 from ner import extract_entities
-from metrics import REGISTRY
 from otel import get_tracer
 from rag.ingest import ingest_from_dir
-from rag.retriever import RagEngine
 from rag.pipeline import SessionContext as RagSessionContext
 from rag.pipeline import rag_retrieve
+from rag.retriever import RagEngine
 
 _RAG_ENGINE: Optional[RagEngine] = None
 _SUPERVISOR = Supervisor()

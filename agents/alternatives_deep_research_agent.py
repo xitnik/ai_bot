@@ -62,17 +62,29 @@ class WebSearchClient:
         self._timeout = timeout_seconds
 
     async def search_forums(
-        self, query: str, k: int = 5, trace_id: Optional[str] = None, session_id: Optional[str] = None
+        self,
+        query: str,
+        k: int = 5,
+        trace_id: Optional[str] = None,
+        session_id: Optional[str] = None,
     ) -> List[DeepResearchSource]:
         return await self._perform("/search/forums", query, k, "forum", trace_id, session_id)
 
     async def search_reviews(
-        self, query: str, k: int = 5, trace_id: Optional[str] = None, session_id: Optional[str] = None
+        self,
+        query: str,
+        k: int = 5,
+        trace_id: Optional[str] = None,
+        session_id: Optional[str] = None,
     ) -> List[DeepResearchSource]:
         return await self._perform("/search/reviews", query, k, "review", trace_id, session_id)
 
     async def search_articles(
-        self, query: str, k: int = 5, trace_id: Optional[str] = None, session_id: Optional[str] = None
+        self,
+        query: str,
+        k: int = 5,
+        trace_id: Optional[str] = None,
+        session_id: Optional[str] = None,
     ) -> List[DeepResearchSource]:
         return await self._perform("/search/articles", query, k, "article", trace_id, session_id)
 
@@ -186,7 +198,10 @@ class AlternativesDeepResearchAgent:
                 query, k=self._search_k, trace_id=trace_id, session_id=request.session_id
             )
             articles = await self._search_client.search_articles(
-                query, k=max(2, self._search_k // 2), trace_id=trace_id, session_id=request.session_id
+                query,
+                k=max(2, self._search_k // 2),
+                trace_id=trace_id,
+                session_id=request.session_id,
             )
             all_results.extend(forums + reviews + articles)
 
@@ -195,7 +210,9 @@ class AlternativesDeepResearchAgent:
             unique.setdefault(item.url, item)
         return list(unique.values())[: self._max_sources]
 
-    def _build_queries(self, request: AlternativesDeepResearchRequest, base_item_name: str) -> List[str]:
+    def _build_queries(
+        self, request: AlternativesDeepResearchRequest, base_item_name: str
+    ) -> List[str]:
         queries = [
             f"{base_item_name} отзывы {request.region or ''}".strip(),
             f"{base_item_name} forum проблемы опыт использования {request.use_case or ''}".strip(),
@@ -204,7 +221,8 @@ class AlternativesDeepResearchAgent:
         if request.delivery_deadline:
             queries.append(f"{base_item_name} поставка сроки {request.delivery_deadline}")
         if request.certifications:
-            queries.append(f"{base_item_name} сертификация {' '.join(request.certifications)}")
+            certs = " ".join(request.certifications)
+            queries.append(f"{base_item_name} сертификация {certs}")
         if request.budget_limit:
             queries.append(f"{base_item_name} budget under {request.budget_limit}")
         return [q for q in queries if q]
@@ -230,9 +248,10 @@ class AlternativesDeepResearchAgent:
             "4) Synthesize & Compare: сопоставь альтернативы по цене/качеству/рискам/срокам.\n"
             "5) Recommend: сценарные рекомендации (бюджет, надежность, сроки поставки).\n"
             "Формат вывода: только один JSON-объект строго по схеме AlternativesDeepResearchResult "
-            "c ключами task_understanding, research_plan, alternatives, comparison_summary, final_recommendations. "
-            "В альтернативе указывай fit_score_0_to_100, price_relative_to_base из "
-            "['unknown','cheaper','similar','more_expensive'] и обязательно список sources {url,title,snippet,source_type,sentiment}. "
+            "c ключами task_understanding, research_plan, alternatives, comparison_summary, "
+            "final_recommendations. В альтернативе указывай fit_score_0_to_100, "
+            "price_relative_to_base из ['unknown','cheaper','similar','more_expensive'] и "
+            "обязательно список sources {url,title,snippet,source_type,sentiment}. "
             "Никакого текста до или после JSON."
         )
 
@@ -356,7 +375,9 @@ class AlternativesDeepResearchAgent:
             final_recommendations={
                 "status": "failed",
                 "reason": reason,
-                "message": "Не удалось выполнить deep research, используйте каталожные альтернативы.",
+                "message": (
+                    "Не удалось выполнить deep research, используйте каталожные альтернативы."
+                ),
             },
         )
 
@@ -365,8 +386,9 @@ def build_summary(result: AlternativesDeepResearchResult) -> str:
     """Короткое summary для orchestrator."""
     best = result.comparison_summary.best_overall
     strict = result.comparison_summary.best_for_strict_constraints
-    recommendation = result.final_recommendations.get("overall") or result.final_recommendations.get(
-        "summary"
+    recommendation = (
+        result.final_recommendations.get("overall")
+        or result.final_recommendations.get("summary")
     )
     summary_parts = []
     if best and best != "нет данных":
@@ -420,7 +442,9 @@ def create_app(
         "/agents/alternatives/deep_research",
         response_model=AlternativesDeepResearchResponse,
     )
-    async def run_deep_research(request: AlternativesDeepResearchRequest) -> AlternativesDeepResearchResponse:
+    async def run_deep_research(
+        request: AlternativesDeepResearchRequest,
+    ) -> AlternativesDeepResearchResponse:
         try:
             result = await agent.run(request)
         except HTTPException:

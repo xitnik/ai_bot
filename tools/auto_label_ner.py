@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 from pathlib import Path
-
-import asyncio
 
 from ner import NerMode, extract_entities_async
 
 
 async def auto_label(input_path: Path, output_path: Path, mode: NerMode) -> None:
-    with input_path.open("r", encoding="utf-8") as infile, output_path.open("w", encoding="utf-8") as outfile:
+    with input_path.open("r", encoding="utf-8") as infile, output_path.open(
+        "w", encoding="utf-8"
+    ) as outfile:
         for line in infile:
             if not line.strip():
                 continue
@@ -30,11 +31,25 @@ async def auto_label(input_path: Path, output_path: Path, mode: NerMode) -> None
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Semi-automatic NER labeling pipeline.")
-    parser.add_argument("--input", type=Path, required=True, help="Path to JSONL with raw messages.")
-    parser.add_argument("--output", type=Path, default=Path("labeled_ner.jsonl"), help="Where to store suggestions.")
-    parser.add_argument("--mode", type=str, choices=[m.value for m in NerMode], default=NerMode.hybrid.value)
+    parser.add_argument(
+        "--input", type=Path, required=True, help="Path to JSONL with raw messages."
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("labeled_ner.jsonl"),
+        help="Where to store suggestions.",
+    )
+    parser.add_argument(
+        "--mode",
+        type=str,
+        choices=[m.value for m in NerMode],
+        default=NerMode.hybrid.value,
+    )
     args = parser.parse_args()
-    asyncio.get_event_loop().run_until_complete(auto_label(args.input, args.output, NerMode(args.mode)))
+    asyncio.get_event_loop().run_until_complete(
+        auto_label(args.input, args.output, NerMode(args.mode))
+    )
     print(f"Wrote suggestions to {args.output}")
     return 0
 

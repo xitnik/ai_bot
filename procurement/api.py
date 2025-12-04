@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +16,7 @@ from .service import compose_rfq, fetch_rfq_with_spec, get_offers_for_spec, save
 router = APIRouter()
 logger = logging.getLogger(__name__)
 sender = MemoryRFQSender()
+SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 
 def _offer_to_out(offer: Offer, score: Optional[float] = None) -> schemas.OfferWithScore:
@@ -35,7 +36,7 @@ def _offer_to_out(offer: Offer, score: Optional[float] = None) -> schemas.OfferW
 
 @router.post("/agents/procurement/rfq")
 async def create_rfq(
-    payload: schemas.RFQCreateRequest, session: AsyncSession = Depends(get_session)
+    payload: schemas.RFQCreateRequest, session: SessionDep
 ) -> list[int]:
     """Создает RFQ для списка поставщиков."""
 
@@ -46,7 +47,9 @@ async def create_rfq(
             rfq_id = await save_rfq(payload.spec, vendor, structured, session)
         except Exception as exc:
             logger.exception("Failed to save RFQ for vendor %s", vendor.name)
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+            ) from exc
         rfq_ids.append(rfq_id)
         try:
             await sender.send_rfq(vendor, structured)
@@ -57,28 +60,30 @@ async def create_rfq(
 
 @router.post("/agents/procurement/parse_reply")
 async def parse_reply(
-    payload: schemas.ParseReplyRequest, session: AsyncSession = Depends(get_session)
+    payload: schemas.ParseReplyRequest, session: SessionDep
 ) -> schemas.OfferOut:
     """Парсит письмо поставщика и сохраняет оффер."""
 
     try:
         rfq, _spec_dict = await fetch_rfq_with_spec(payload.rfq_id, session)
     except LookupError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
     try:
         parsed = await parse_vendor_reply(payload.raw_text)
     except Exception as exc:
         logger.exception("Parse failed for RFQ %s", payload.rfq_id)
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
     try:
         offer = await store_offer(rfq.id, parsed, payload.raw_text, session)
     except LookupError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("Failed to store offer for RFQ %s", payload.rfq_id)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+        ) from exc
 
     return schemas.OfferOut(
         id=offer.id,
@@ -94,7 +99,9 @@ async def parse_reply(
 
 
 @router.get("/agents/procurement/best_offer/{spec_id}")
-async def best_offer(spec_id: int, session: AsyncSession = Depends(get_session)) -> schemas.BestOfferResponse:
+async def best_offer(
+    spec_id: int, session: SessionDep
+) -> schemas.BestOfferResponse:
     """Агрегирует офферы по спецификации и выбирает лучший."""
 
     offers = await get_offers_for_spec(spec_id, session)

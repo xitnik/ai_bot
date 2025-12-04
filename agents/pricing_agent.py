@@ -287,10 +287,11 @@ async def _maybe_retrieve_pricing_context(request: PricingRequest) -> List[str]:
     if not request.message:
         return []
     try:
+        context = request.context if isinstance(request.context, dict) else {}
         session = RagSessionContext(
-            client_id=request.context.get("client_id") if isinstance(request.context, dict) else None,
-            product_id=request.context.get("product_id") if isinstance(request.context, dict) else None,
-            lang=request.context.get("lang") if isinstance(request.context, dict) else None,
+            client_id=context.get("client_id"),
+            product_id=context.get("product_id"),
+            lang=context.get("lang"),
         )
         retrieved = await rag_retrieve(request.message, session=session)
         return [item.document.text for item in retrieved]

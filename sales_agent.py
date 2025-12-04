@@ -4,7 +4,7 @@ import asyncio
 import json
 import time
 import uuid
-from typing import Any, Callable, Dict, List, Optional
+from typing import Annotated, Any, Callable, Dict, List, Optional
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -19,6 +19,8 @@ from config import get_settings
 from llm_client import chat
 from logging_utils import log_event
 from metrics import REGISTRY
+from rag.pipeline import SessionContext as RagSessionContext
+from rag.pipeline import rag_retrieve
 from sales_models import (
     AlternativesToolInput,
     PlannerOutput,
@@ -30,8 +32,6 @@ from sales_models import (
     StockToolInput,
 )
 from sales_tools_clients import SalesToolsClient
-from rag.pipeline import SessionContext as RagSessionContext
-from rag.pipeline import rag_retrieve
 
 PLANNER_SYSTEM_PROMPT = (
     "You are a sales planner. Decide which tools to call and what to ask next. "
@@ -68,7 +68,9 @@ class SalesSessionRepository:
                 )
             else:
                 stmt = mysql_insert(db.SalesSessionModel).values(session_id=session_id, state=state)
-                stmt = stmt.on_duplicate_key_update(state=stmt.inserted.state, updated_at=db.func.now())
+                stmt = stmt.on_duplicate_key_update(
+                    state=stmt.inserted.state, updated_at=db.func.now()
+                )
             await session.execute(stmt)
             await session.commit()
 
@@ -256,7 +258,10 @@ class SalesAgentService:
                 {
                     "id": item.document.id,
                     "text": item.document.text,
-                    "source": item.document.metadata.get("source") or item.document.metadata.get("source_type"),
+                    "source": (
+                        item.document.metadata.get("source")
+                        or item.document.metadata.get("source_type")
+                    ),
                 }
                 for item in retrieved
             ]
@@ -429,12 +434,15 @@ async def get_sales_agent_service(request: Request) -> SalesAgentService:
     return request.app.state.sales_agent_service
 
 
+ServiceDep = Annotated[SalesAgentService, Depends(get_sales_agent_service)]
+
+
 def create_app() -> FastAPI:
     app = FastAPI()
 
     @app.on_event("startup")
     async def startup_event() -> None:
-        from observability import init_logging, get_service_name
+        from observability import get_service_name, init_logging
 
         init_logging(f"{get_service_name()}-sales")
         await db.init_db()
@@ -454,7 +462,7 @@ def create_app() -> FastAPI:
     @app.post("/agents/sales/run", response_model=SalesResponse)
     async def run_sales_endpoint(
         sales_request: SalesRequest,
-        service: SalesAgentService = Depends(get_sales_agent_service),
+        service: ServiceDep,
     ) -> SalesResponse:
         return await service.run(sales_request)
 

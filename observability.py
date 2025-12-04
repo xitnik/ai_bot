@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import sys
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from config import get_settings
 

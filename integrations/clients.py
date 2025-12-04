@@ -6,8 +6,9 @@ from typing import Any, Dict, Optional
 
 import httpx
 
-from config import get_settings
 from agents.circuit_breaker import CircuitBreakerRegistry
+from config import get_settings
+
 from .base import ChannelClient, CRMClient, LeadPayload, MarketplaceClient, StockClient
 from .fake import InMemoryAvito, InMemoryBitrix, InMemoryMAX, InMemoryOneC, InMemoryTelegram
 
@@ -43,7 +44,9 @@ class RateLimiter:
 
 
 class TelegramClient(ChannelClient):
-    def __init__(self, token: Optional[str] = None, client: Optional[httpx.AsyncClient] = None) -> None:
+    def __init__(
+        self, token: Optional[str] = None, client: Optional[httpx.AsyncClient] = None
+    ) -> None:
         self.token = token or get_settings().integrations.telegram_bot_token
         self._client = client or _http_client()
 
@@ -70,7 +73,9 @@ class MAXClient(ChannelClient):
             await fake.send_message(chat_id, text)
             return
         headers = {"Authorization": f"Bearer {self.api_token}"}
-        await self._client.post(f"{self.base_url}/messages", json={"chat_id": chat_id, "text": text}, headers=headers)
+        await self._client.post(
+            f"{self.base_url}/messages", json={"chat_id": chat_id, "text": text}, headers=headers
+        )
 
 
 class AvitoClient(MarketplaceClient):
@@ -85,13 +90,17 @@ class AvitoClient(MarketplaceClient):
             fake = InMemoryAvito()
             return await fake.publish_message(payload)
         headers = {"Authorization": f"Bearer {self.api_token}"}
-        response = await self._client.post(f"{self.base_url}/messages", json=payload, headers=headers)
+        response = await self._client.post(
+            f"{self.base_url}/messages", json=payload, headers=headers
+        )
         response.raise_for_status()
         return response.json()
 
 
 class BitrixClient(CRMClient):
-    def __init__(self, webhook_url: Optional[str] = None, client: Optional[httpx.AsyncClient] = None) -> None:
+    def __init__(
+        self, webhook_url: Optional[str] = None, client: Optional[httpx.AsyncClient] = None
+    ) -> None:
         self.webhook_url = webhook_url or get_settings().integrations.bitrix24_webhook_url
         self._client = client or _http_client()
         self._fake = InMemoryBitrix()
@@ -126,7 +135,9 @@ class BitrixClient(CRMClient):
 
 
 class OneCClient(StockClient):
-    def __init__(self, base_url: Optional[str] = None, client: Optional[httpx.AsyncClient] = None) -> None:
+    def __init__(
+        self, base_url: Optional[str] = None, client: Optional[httpx.AsyncClient] = None
+    ) -> None:
         self.base_url = base_url or get_settings().integrations.onec_base_url
         self._client = client or _http_client()
         self._fake = InMemoryOneC()

@@ -4,7 +4,6 @@ import sys
 from collections.abc import AsyncGenerator
 from pathlib import Path
 
-import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
@@ -19,8 +18,8 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import procurement.db as db
-from app import app
+import procurement.db as db  # noqa: E402
+from app import app  # noqa: E402
 
 
 @pytest_asyncio.fixture(scope="session")

@@ -28,7 +28,11 @@ def offline_conversion_score(predictions: List[str], references: List[str]) -> f
     """Простая прокси-метрика: доля совпадений по точному ответу."""
     if not references:
         return 0.0
-    matches = sum(1 for p, r in zip(predictions, references) if p.strip().lower() == r.strip().lower())
+    matches = sum(
+        1
+        for p, r in zip(predictions, references, strict=False)
+        if p.strip().lower() == r.strip().lower()
+    )
     return matches / len(references)
 
 
@@ -60,7 +64,11 @@ def run_toy_training(
     adapter_file = output_path / "lora_adapter.json"
     adapter_file.write_text(json.dumps(adapter, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    metrics = {"perplexity_before": before_ppl, "perplexity_after": after_ppl, "conversion": conversion}
+    metrics = {
+        "perplexity_before": before_ppl,
+        "perplexity_after": after_ppl,
+        "conversion": conversion,
+    }
     metrics_file = output_path / "training_metrics.json"
     metrics_file.write_text(json.dumps(metrics, ensure_ascii=False, indent=2), encoding="utf-8")
     return metrics

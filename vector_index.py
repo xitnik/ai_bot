@@ -3,14 +3,14 @@ from __future__ import annotations
 import asyncio
 import math
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional, Protocol, Sequence
+from typing import Any, Dict, List, Optional, Protocol, Sequence
 
 from sqlalchemy import select
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from alternatives_models import Hit
 import db
+from alternatives_models import Hit
 from rag.ingest import Document
 
 
@@ -88,7 +88,7 @@ def _passes_filters(metadata: Dict[str, Any], filters: Dict[str, Any]) -> bool:
 def _cosine_similarity(a: Sequence[float], b: Sequence[float]) -> float:
     if not a or not b:
         return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
     norm_a = math.sqrt(sum(x * x for x in a))
     norm_b = math.sqrt(sum(y * y for y in b))
     if norm_a == 0.0 or norm_b == 0.0:
@@ -117,10 +117,14 @@ class VectorStore(VectorIndex, Protocol):
     Exposes product-centric upsert/search alongside document search.
     """
 
-    async def upsert_product(self, product_id: str, vector: List[float], metadata: Dict[str, Any]) -> None:
+    async def upsert_product(
+        self, product_id: str, vector: List[float], metadata: Dict[str, Any]
+    ) -> None:
         ...
 
-    async def knn_search(self, vector: List[float], k: int, filters: Dict[str, Any]) -> List[Hit]:
+    async def knn_search(
+        self, vector: List[float], k: int, filters: Dict[str, Any]
+    ) -> List[Hit]:
         ...
 
 
@@ -159,7 +163,9 @@ class InMemoryVectorStore:
         return scored[:top_k]
 
     # --- Legacy product-centric wrappers ---
-    async def upsert_product(self, product_id: str, vector: List[float], metadata: Dict[str, Any]) -> None:
+    async def upsert_product(
+        self, product_id: str, vector: List[float], metadata: Dict[str, Any]
+    ) -> None:
         """
         Stores product vector; kept for compatibility with AlternativesAgent.
         Text is synthesized from metadata to avoid empty payloads.
@@ -188,7 +194,9 @@ class MySQLVectorStore(VectorStore):
     """Персистентный VectorStore на MySQL с вычислением косинусного сходства в приложении."""
 
     def __init__(
-        self, session_factory: Optional[async_sessionmaker[AsyncSession]] = None, max_candidates: int = 500
+        self,
+        session_factory: Optional[async_sessionmaker[AsyncSession]] = None,
+        max_candidates: int = 500,
     ) -> None:
         self._session_factory = session_factory or db.AsyncSessionLocal
         self._max_candidates = max_candidates
@@ -267,7 +275,9 @@ class MySQLVectorStore(VectorStore):
         scored.sort(key=lambda item: item.score, reverse=True)
         return scored[:top_k]
 
-    async def upsert_product(self, product_id: str, vector: List[float], metadata: Dict[str, Any]) -> None:
+    async def upsert_product(
+        self, product_id: str, vector: List[float], metadata: Dict[str, Any]
+    ) -> None:
         async with self._session_factory() as session:
             payload = {
                 "product_id": product_id,
@@ -351,7 +361,9 @@ class QdrantVectorIndex:
         except Exception:
             self._client.recreate_collection(
                 collection_name=collection,
-                vectors_config=qmodels.VectorParams(size=vector_size, distance=getattr(qmodels.Distance, distance)),
+                vectors_config=qmodels.VectorParams(
+                    size=vector_size, distance=getattr(qmodels.Distance, distance)
+                ),
             )
 
     async def add_documents(self, documents: List[Document]) -> None:
@@ -382,7 +394,12 @@ class QdrantVectorIndex:
         if filters:
             try:
                 qfilter = self._models.Filter(
-                    must=[self._models.FieldCondition(key=k, match=self._models.MatchValue(value=v)) for k, v in filters.items()]
+                    must=[
+                        self._models.FieldCondition(
+                            key=k, match=self._models.MatchValue(value=v)
+                        )
+                        for k, v in filters.items()
+                    ]
                 )
             except Exception:
                 qfilter = None
@@ -396,6 +413,13 @@ class QdrantVectorIndex:
         results: List[ScoredDocument] = []
         for hit in hits:
             doc_meta = dict(getattr(hit, "payload", {}) or {})
-            doc = Document(id=str(hit.id), text=doc_meta.get("text", ""), metadata=doc_meta, embedding=None)
-            results.append(ScoredDocument(document=doc, score=getattr(hit, "score", 0.0) or 0.0))
+            doc = Document(
+                id=str(hit.id),
+                text=doc_meta.get("text", ""),
+                metadata=doc_meta,
+                embedding=None,
+            )
+            results.append(
+                ScoredDocument(document=doc, score=getattr(hit, "score", 0.0) or 0.0)
+            )
         return results

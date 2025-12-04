@@ -52,7 +52,7 @@ def score_offers(offers: Iterable[Offer], weights: dict[str, float]) -> list[tup
 
     scored: list[tuple[Offer, float]] = []
     for offer, p_score, l_score, v_score in zip(
-        offers_list, price_scores, lead_scores, vendor_scores_norm
+        offers_list, price_scores, lead_scores, vendor_scores_norm, strict=False
     ):
         # Итоговый балл — взвешенная сумма нормированных показателей.
         total = w_price * p_score + w_lead * l_score + w_vendor * v_score

@@ -7,10 +7,11 @@ from typing import Any, Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import schemas
-from .db import Offer, RFQ, RFQSpecRecord
 from rag.pipeline import SessionContext as RagSessionContext
 from rag.pipeline import rag_retrieve
+
+from . import schemas
+from .db import RFQ, Offer, RFQSpecRecord
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +135,11 @@ def _retrieve_rag_references(spec: schemas.RFQSpec) -> list[dict[str, Any]]:
             ctx = RagSessionContext(lang="ru")
             docs = await rag_retrieve(query, session=ctx)
             return [
-                {"id": d.document.id, "text": d.document.text[:300], "source": d.document.metadata.get("source")}
+                {
+                    "id": d.document.id,
+                    "text": d.document.text[:300],
+                    "source": d.document.metadata.get("source"),
+                }
                 for d in docs
             ]
 

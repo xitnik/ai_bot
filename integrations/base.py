@@ -21,7 +21,9 @@ class ChannelClient(Protocol):
 
 
 class CRMClient(Protocol):
-    async def create_lead(self, payload: LeadPayload) -> Dict[str, Any]:  # pragma: no cover - интерфейс
+    async def create_lead(
+        self, payload: LeadPayload
+    ) -> Dict[str, Any]:  # pragma: no cover - интерфейс
         ...
 
 
@@ -31,5 +33,7 @@ class StockClient(Protocol):
 
 
 class MarketplaceClient(Protocol):
-    async def publish_message(self, payload: Dict[str, Any]) -> Dict[str, Any]:  # pragma: no cover - интерфейс
+    async def publish_message(
+        self, payload: Dict[str, Any]
+    ) -> Dict[str, Any]:  # pragma: no cover - интерфейс
         ...
