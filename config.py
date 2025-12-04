@@ -53,11 +53,24 @@ class DatabaseSettings:
 
 
 @dataclass
+class DeepResearchSettings:
+    search_base_url: str = os.getenv("DEEP_RESEARCH_SEARCH_BASE_URL", "")
+    search_api_key: str = os.getenv("DEEP_RESEARCH_SEARCH_API_KEY", "")
+    search_timeout_seconds: float = float(os.getenv("DEEP_RESEARCH_SEARCH_TIMEOUT", "8.0"))
+    search_top_k: int = int(os.getenv("DEEP_RESEARCH_SEARCH_TOP_K", "5"))
+    search_max_results: int = int(os.getenv("DEEP_RESEARCH_SEARCH_MAX_RESULTS", "12"))
+    model: str = os.getenv("DEEP_RESEARCH_MODEL", "gpt5")
+    temperature: float = float(os.getenv("DEEP_RESEARCH_TEMPERATURE", "0.2"))
+    max_output_tokens: int = int(os.getenv("DEEP_RESEARCH_MAX_OUTPUT_TOKENS", "1500"))
+
+
+@dataclass
 class Settings:
     llm: LLMSettings = LLMSettings()
     integrations: IntegrationSettings = IntegrationSettings()
     observability: ObservabilitySettings = ObservabilitySettings()
     database: DatabaseSettings = DatabaseSettings()
+    deep_research: DeepResearchSettings = DeepResearchSettings()
 
 
 @lru_cache(maxsize=1)

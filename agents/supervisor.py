@@ -41,6 +41,9 @@ class Supervisor:
             intent, agents, next_state = "pricing", ["pricing"], "pricing_quote"
         elif "alternative" in text or "another" in text:
             intent, agents, next_state = "alternatives", ["alternatives"], "alternatives_suggest"
+            alt_keywords = ("compare", "vs", "аналог", "альтернатива", "сравни")
+            if any(token in text for token in alt_keywords) or variant == "beta":
+                agents = list(dict.fromkeys(agents + ["alternatives_deep_research"]))
         elif "buy" in text or "order" in text or "procure" in text:
             intent, agents, next_state = "procurement", ["procurement"], "procurement_flow"
         elif "calc" in text or "sum" in text or " + " in text:
