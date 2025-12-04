@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 # Для прогонов локально убедитесь, что установлены fastapi и её зависимости.
 from fastapi.testclient import TestClient
@@ -63,7 +65,7 @@ async def test_agent_pipeline_returns_ranked_hits() -> None:
     store = InMemoryVectorStore()
     base = _base_metadata()
 
-    store.upsert_product(
+    await store.upsert_product(
         "direct",
         [1.0, 0.0, 0.0],
         {
@@ -74,7 +76,7 @@ async def test_agent_pipeline_returns_ranked_hits() -> None:
             "in_stock": True,
         },
     )
-    store.upsert_product(
+    await store.upsert_product(
         "cheaper",
         [0.98, 0.02, 0.0],
         {
@@ -85,7 +87,7 @@ async def test_agent_pipeline_returns_ranked_hits() -> None:
             "in_stock": True,
         },
     )
-    store.upsert_product(
+    await store.upsert_product(
         "filtered_out",
         [1.0, 0.0, 0.0],
         {
@@ -131,16 +133,18 @@ async def test_agent_returns_empty_when_no_hits() -> None:
 def test_fastapi_endpoint() -> None:
     store = InMemoryVectorStore()
     base = _base_metadata()
-    store.upsert_product(
-        "candidate",
-        [1.0, 0.0, 0.0],
-        {
-            "species": "oak",
-            "grade": "A",
-            "dimensions": {"length": 101.0, "width": 20.0, "thickness": 5.0},
-            "price": 10.1,
-            "in_stock": True,
-        },
+    asyncio.get_event_loop().run_until_complete(
+        store.upsert_product(
+            "candidate",
+            [1.0, 0.0, 0.0],
+            {
+                "species": "oak",
+                "grade": "A",
+                "dimensions": {"length": 101.0, "width": 20.0, "thickness": 5.0},
+                "price": 10.1,
+                "in_stock": True,
+            },
+        )
     )
     app = create_app(store=store, embedder=FakeEmbeddingsClient([1.0, 0.0, 0.0]))
     client = TestClient(app)

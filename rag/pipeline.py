@@ -5,6 +5,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence
 
+import db
 from config import get_settings
 from embeddings_client import EmbeddingsClient
 from llm_client import chat
@@ -15,7 +16,7 @@ from rag.ingest import Document, ingest_from_dir
 from rag.knowledge_graph import KG
 from rag.retriever import HybridRetriever, RetrieverConfig
 from rag.self_rag import SelfRagOrchestrator
-from vector_index import InMemoryVectorStore, ScoredDocument, VectorIndex
+from vector_index import MySQLVectorStore, ScoredDocument, VectorIndex
 
 
 @dataclass
@@ -59,13 +60,14 @@ class RagPipeline:
         data_dir: str = "fixtures/rag_docs",
         retriever_config: Optional[RetrieverConfig] = None,
     ) -> "RagPipeline":
+        await db.init_db()
         embedder = EmbeddingsClient()
         docs = ingest_from_dir(data_dir)
         documents_with_vectors = await _embed_documents(embedder, docs)
-        index = InMemoryVectorStore()
-        index.add_documents(documents_with_vectors)
+        index = MySQLVectorStore()
+        await index.add_documents(documents_with_vectors)
         if get_settings().rag.enable_knowledge_graph:
-            KG.bulk_add_documents(documents_with_vectors)
+            await KG.bulk_add_documents(documents_with_vectors)
         retriever = HybridRetriever(index, embedder, documents=documents_with_vectors, config=retriever_config)
         return cls(retriever=retriever, embedder=embedder, vector_index=index, documents=documents_with_vectors)
 
@@ -121,7 +123,7 @@ class RagPipeline:
     ) -> List[ScoredDocument]:
         retrieval_start = time.perf_counter()
         retrieved = await self._retriever.retrieve(query, filters=filters)
-        retrieved = self._augment_with_kg(retrieved, session)
+        retrieved = await self._augment_with_kg(retrieved, session)
         REGISTRY.histogram("rag_retrieval_latency_ms").observe((time.perf_counter() - retrieval_start) * 1000)
         REGISTRY.histogram("rag_retrieved_docs_count").observe(len(retrieved))
         return retrieved
@@ -146,11 +148,11 @@ class RagPipeline:
         filters.update(session.metadata or {})
         return filters
 
-    def _augment_with_kg(self, retrieved: List[ScoredDocument], session: Optional[SessionContext]) -> List[ScoredDocument]:
+    async def _augment_with_kg(self, retrieved: List[ScoredDocument], session: Optional[SessionContext]) -> List[ScoredDocument]:
         settings = get_settings().rag
         if not settings.enable_knowledge_graph or not session:
             return retrieved
-        related_ids = KG.get_related_documents(session.client_id, session.product_id)
+        related_ids = await KG.get_related_documents(session.client_id, session.product_id)
         existing = {item.document.id for item in retrieved}
         augmented = list(retrieved)
         for doc_id in related_ids:

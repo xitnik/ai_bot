@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import time
 import uuid
@@ -9,7 +8,10 @@ from typing import Any, Callable, Dict, List, Optional
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
 from pydantic import ValidationError
+from sqlalchemy.dialects.mysql import insert as mysql_insert
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+import db
 from alternatives_models import AlternativesResult
 from config import get_settings
 from llm_client import chat
@@ -29,10 +31,6 @@ from sales_tools_clients import SalesToolsClient
 from rag.pipeline import SessionContext as RagSessionContext
 from rag.pipeline import rag_retrieve
 
-# Глобальное хранилище сессий; позже можно заменить на Redis/БД.
-SESSION_STORE: Dict[str, Dict[str, Any]] = {}
-SESSION_LOCK = asyncio.Lock()
-
 PLANNER_SYSTEM_PROMPT = (
     "You are a sales planner. Decide which tools to call and what to ask next. "
     "Never guess facts; always call tools for prices, stock, and alternatives."
@@ -40,6 +38,27 @@ PLANNER_SYSTEM_PROMPT = (
 STYLER_SYSTEM_PROMPT = "Rewrite the reply in our brand tone. Do not change any facts or numbers."
 
 ChatCallable = Callable[..., Any]
+
+
+class SalesSessionRepository:
+    """Слой доступа к состоянию продажных сессий в MySQL."""
+
+    def __init__(self, session_factory: Optional[async_sessionmaker[AsyncSession]] = None) -> None:
+        self._session_factory = session_factory or db.AsyncSessionLocal
+
+    async def load(self, session_id: str) -> Dict[str, Any]:
+        async with self._session_factory() as session:
+            record = await session.get(db.SalesSessionModel, session_id)
+            if not record:
+                return {}
+            return dict(record.state or {})
+
+    async def save(self, session_id: str, state: Dict[str, Any]) -> None:
+        async with self._session_factory() as session:
+            stmt = mysql_insert(db.SalesSessionModel).values(session_id=session_id, state=state)
+            stmt = stmt.on_duplicate_key_update(state=stmt.inserted.state, updated_at=db.func.now())
+            await session.execute(stmt)
+            await session.commit()
 
 
 def _styler_model_for_role(role: str) -> str:
@@ -58,15 +77,17 @@ class SalesAgentService:
         tools_client: SalesToolsClient,
         planner_chat: Optional[ChatCallable] = None,
         styler_chat: Optional[ChatCallable] = None,
+        session_repo: Optional[SalesSessionRepository] = None,
     ) -> None:
         self.tools_client = tools_client
         self.planner_chat = planner_chat or chat
         self.styler_chat = styler_chat or self.planner_chat
+        self.session_repo = session_repo or SalesSessionRepository()
 
     async def run(self, request: SalesRequest) -> SalesResponse:
         """Главный пайплайн агента."""
         trace_id = str(uuid.uuid4())
-        session_snapshot = await self._load_session(request.session_id)
+        session_snapshot = await self.session_repo.load(request.session_id)
         used_tools: List[str] = []
 
         planner_output = await self._run_planner(
@@ -78,7 +99,7 @@ class SalesAgentService:
         styled_reply = await self._run_styler(
             planner_output.reply_draft, trace_id, request.session_id
         )
-        await self._save_session(request.session_id, {"next_state": planner_output.next_state})
+        await self.session_repo.save(request.session_id, {"next_state": planner_output.next_state})
         REGISTRY.counter("sales_agent_calls_total").inc()
 
         return SalesResponse(
@@ -387,15 +408,6 @@ class SalesAgentService:
             )
             return reply_draft
 
-    async def _load_session(self, session_id: str) -> Dict[str, Any]:
-        async with SESSION_LOCK:
-            return dict(SESSION_STORE.get(session_id, {}))
-
-    async def _save_session(self, session_id: str, state: Dict[str, Any]) -> None:
-        async with SESSION_LOCK:
-            SESSION_STORE[session_id] = state
-
-
 def _default_base_url() -> str:
     return get_settings().integrations.sales_agents_base_url
 
@@ -413,6 +425,7 @@ def create_app() -> FastAPI:
         from observability import init_logging, get_service_name
 
         init_logging(f"{get_service_name()}-sales")
+        await db.init_db()
         base_url = _default_base_url()
         http_client = httpx.AsyncClient(base_url=base_url, timeout=10.0)
         tools_client = SalesToolsClient(http_client=http_client)
@@ -424,6 +437,7 @@ def create_app() -> FastAPI:
         http_client: Optional[httpx.AsyncClient] = getattr(app.state, "http_client", None)
         if http_client:
             await http_client.aclose()
+        await db.dispose_engine()
 
     @app.post("/agents/sales/run", response_model=SalesResponse)
     async def run_sales_endpoint(

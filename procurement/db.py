@@ -5,9 +5,10 @@ from typing import AsyncGenerator, Optional
 
 import sqlalchemy as sa
 from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text, func
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.orm import declarative_base, relationship
+
+from config import get_settings
 
 try:  # SQLAlchemy <2.0 совместимость
     from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -19,7 +20,7 @@ except ImportError:  # pragma: no cover
 
 Base = declarative_base()
 
-json_variant = sa.JSON().with_variant(JSONB, "postgresql")
+json_variant = sa.JSON()
 
 
 class RFQSpecRecord(Base):
@@ -62,15 +63,17 @@ class Offer(Base):
 
 
 def _database_url() -> str:
-    """Получение URL БД с дефолтом на локальный SQLite."""
+    """Получение URL MySQL для procurement-модуля."""
 
-    return os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./procurement.db")
+    settings = get_settings().database
+    env_override = os.getenv("PROCUREMENT_DATABASE_URL")
+    return env_override or settings.procurement_async_url()
 
 
 def create_engine(url: Optional[str] = None) -> AsyncEngine:
     """Создает новый AsyncEngine для заданного URL."""
 
-    return create_async_engine(url or _database_url(), echo=False, future=True)
+    return create_async_engine(url or _database_url(), echo=False, future=True, pool_pre_ping=True)
 
 
 engine: AsyncEngine = create_engine()

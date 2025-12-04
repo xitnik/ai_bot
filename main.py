@@ -23,16 +23,21 @@ from orchestrator import (
 )
 from observability import get_service_name, init_logging
 from otel import get_tracer
-from session_store import InMemorySessionStore
+from session_store import MySQLSessionStore
 
 app = FastAPI(title="Conversation Gateway")
-session_store = InMemorySessionStore()
+session_store = MySQLSessionStore()
 
 
 @app.on_event("startup")
 async def startup() -> None:
     init_logging(get_service_name())
     await db.init_db()
+
+
+@app.on_event("shutdown")
+async def shutdown() -> None:
+    await db.dispose_engine()
 
 
 async def normalize_message(payload: Dict[str, Any]) -> Message:
@@ -51,26 +56,21 @@ async def normalize_message(payload: Dict[str, Any]) -> Message:
 
 async def ensure_session(db_session: AsyncSession, message: Message) -> SessionDTO:
     """Достаем активную сессию или создаем новую."""
-    cached = await session_store.get(message.user_id, message.channel)
-    if cached:
-        await db.touch_session_state(db_session, cached.session_id, cached.state)
-        return cached
-
-    existing = await db.fetch_latest_session(db_session, message.user_id, message.channel)
+    existing = await session_store.get(message.user_id, message.channel)
     if existing:
-        session_dto = SessionDTO.model_validate(existing)
-        await db.touch_session_state(db_session, session_dto.session_id, session_dto.state)
-    else:
-        session_model = db.SessionModel(
-            session_id=str(uuid.uuid4()),
-            user_id=message.user_id,
-            channel=message.channel,
-            state="idle",
-        )
-        db_session.add(session_model)
-        await db_session.commit()
-        await db_session.refresh(session_model)
-        session_dto = SessionDTO.model_validate(session_model)
+        await db.touch_session_state(db_session, existing.session_id, existing.state)
+        return existing
+
+    session_model = db.SessionModel(
+        session_id=str(uuid.uuid4()),
+        user_id=message.user_id,
+        channel=message.channel,
+        state="idle",
+    )
+    db_session.add(session_model)
+    await db_session.commit()
+    await db_session.refresh(session_model)
+    session_dto = SessionDTO.model_validate(session_model)
     await session_store.save(session_dto)
     return session_dto
 

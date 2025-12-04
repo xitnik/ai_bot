@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import os
 
 import pytest
 from sqlalchemy import select
@@ -13,8 +14,10 @@ from orchestrator import route_message
 
 @pytest.mark.asyncio
 async def test_log_event_persists_payload(tmp_path) -> None:
-    db_path = tmp_path / "events.db"
-    db.configure_engine(f"sqlite+aiosqlite:///{db_path}")
+    db_url = os.getenv("MYSQL_TEST_URL")
+    if not db_url:
+        pytest.skip("MYSQL_TEST_URL is not configured")
+    db.configure_engine(db_url)
     await db.init_db()
 
     payload = {"user_id": "user-1", "text": "x" * 2048}

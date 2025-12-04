@@ -106,13 +106,12 @@ class HybridRetriever:
             embedding = await self._embedder.get_text_embedding(query)
         except Exception:
             embedding = _hash_embedding(query)
-        return self._index.search(embedding, filters=filters or {}, top_k=self._config.dense_top_k)
+        return await self._index.search(embedding, filters=filters or {}, top_k=self._config.dense_top_k)
 
     def _metadata_matches(self, metadata: Dict[str, Any], filters: Dict[str, Any]) -> bool:
-        from vector_index import InMemoryVectorStore  # avoid cycle in type hints
+        from vector_index import _passes_filters  # type: ignore import-not-found
 
-        helper = getattr(InMemoryVectorStore(), "_passes_filters")
-        return helper(metadata, filters)  # type: ignore[arg-type]
+        return _passes_filters(metadata, filters)
 
     async def retrieve(self, query: str, filters: Optional[Dict[str, Any]] = None) -> List[ScoredDocument]:
         cache_key = self._cache_key(query, filters or {})

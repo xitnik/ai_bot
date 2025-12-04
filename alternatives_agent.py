@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import FastAPI
 
+import db
 from alternatives_models import (
     AlternativeItem,
     AlternativeType,
@@ -11,7 +12,7 @@ from alternatives_models import (
     AlternativesResult,
 )
 from embeddings_client import EmbeddingsClient
-from vector_index import InMemoryVectorStore, VectorStore
+from vector_index import MySQLVectorStore, VectorStore
 from rag.pipeline import SessionContext as RagSessionContext
 from rag.pipeline import rag_retrieve
 
@@ -132,12 +133,12 @@ class AlternativesAgent:
             filters["dimensions"] = dims_range
 
         # Векторный поиск с жесткими фильтрами.
-        hits = self._store.knn_search(query_vector, request.k, filters)
+        hits = await self._store.knn_search(query_vector, request.k, filters)
         # Если подбор урезан по габаритам и результатов мало — добавляем ослабленный поиск.
         if dims_range and len(hits) < request.k:
             relaxed_filters = dict(filters)
             relaxed_filters.pop("dimensions", None)
-            relaxed_hits = self._store.knn_search(query_vector, request.k, relaxed_filters)
+            relaxed_hits = await self._store.knn_search(query_vector, request.k, relaxed_filters)
             # Мержим результаты, сохраняя сортировку по score.
             merged = {hit.product_id: hit for hit in hits}
             for hit in relaxed_hits:
@@ -172,7 +173,7 @@ class AlternativesAgent:
             return []
 
 
-def _ingest_stub_catalog(store: VectorStore, embedder: EmbeddingsClient) -> None:
+async def _ingest_stub_catalog(store: VectorStore, embedder: EmbeddingsClient) -> None:
     """
     Доп. загрузка каталога из fixtures/catalog.json.
     Если файла нет или embedder недоступен (нет ключей) — мягко пропускаем.
@@ -197,14 +198,8 @@ def _ingest_stub_catalog(store: VectorStore, embedder: EmbeddingsClient) -> None
                 "in_stock": item.get("in_stock", True),
             }
             desc = f"{meta.get('species')} {item.get('name','')}"
-            vector = getattr(embedder, "embed_text_sync", None)
-            if callable(vector):  # pragma: no cover - hook для синхронных клиентов
-                vec = vector(desc)
-            else:
-                # Используем async embed_text через небольшую обертку.
-                import asyncio
-                vec = asyncio.get_event_loop().run_until_complete(embedder.embed_text(desc))
-            store.upsert_product(item.get("id", item.get("sku", "")), vec, meta)
+            vec = await embedder.embed_text(desc)
+            await store.upsert_product(item.get("id", item.get("sku", "")), vec, meta)
         except Exception:
             # Если нет env или embedder падает, пропускаем элемент.
             continue
@@ -215,14 +210,21 @@ def create_app(
     embedder: Optional[EmbeddingsClient] = None,
 ) -> FastAPI:
     # Отдельная фабрика, чтобы проще подменять зависимости в тестах.
-    vector_store = store or InMemoryVectorStore()
+    vector_store = store or MySQLVectorStore()
     embeddings_client = embedder or EmbeddingsClient()
-    if store is None:
-        # Опциональный инжест каталога; не критичен для работы.
-        _ingest_stub_catalog(vector_store, embeddings_client)
     agent = AlternativesAgent(vector_store, embeddings_client)
 
     app = FastAPI()
+
+    @app.on_event("startup")
+    async def startup_event() -> None:
+        await db.init_db()
+        if store is None:
+            await _ingest_stub_catalog(vector_store, embeddings_client)
+
+    @app.on_event("shutdown")
+    async def shutdown_event() -> None:
+        await db.dispose_engine()
 
     @app.post("/agents/alternatives/run", response_model=AlternativesResult)
     async def run_alternatives(request: AlternativesRequest) -> AlternativesResult:

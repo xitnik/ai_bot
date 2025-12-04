@@ -24,7 +24,7 @@ async def test_hybrid_retriever_prefers_matching_doc() -> None:
         Document(id="other", text="unrelated text", metadata={"lang": "en"}, embedding=[0.0]),
     ]
     store = InMemoryVectorStore()
-    store.add_documents(docs)
+    await store.add_documents(docs)
     retriever = HybridRetriever(
         store,
         FakeEmbedder(),
@@ -44,7 +44,7 @@ async def test_rag_pipeline_answer_uses_chat(monkeypatch) -> None:
         Document(id="d1", text="pricing policy doc", metadata={"source": "fixture", "lang": "en"}, embedding=[1.0]),
     ]
     store = InMemoryVectorStore()
-    store.add_documents(docs)
+    await store.add_documents(docs)
     embedder = FakeEmbedder()
     retriever = HybridRetriever(
         store,

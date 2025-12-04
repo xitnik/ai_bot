@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import os
 from pathlib import Path
 
 import httpx
@@ -18,8 +19,11 @@ def _is_subsequence(pattern, sequence) -> bool:
 
 @pytest.mark.asyncio
 async def test_webchat_pipeline(tmp_path: Path) -> None:
-    db_path = tmp_path / "pipeline.db"
-    db.configure_engine(f"sqlite+aiosqlite:///{db_path}")
+    db_url = os.getenv("MYSQL_TEST_URL")
+    if not db_url:
+        pytest.skip("MYSQL_TEST_URL is not configured")
+
+    db.configure_engine(db_url)
     import main
 
     importlib.reload(otel)

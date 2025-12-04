@@ -48,8 +48,26 @@ class ObservabilitySettings:
 
 @dataclass
 class DatabaseSettings:
-    database_url: str = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./bot.db")
-    procurement_url: str = os.getenv("PROCUREMENT_DATABASE_URL", "sqlite+aiosqlite:///./procurement.db")
+    mysql_host: str = os.getenv("MYSQL_HOST", "localhost")
+    mysql_port: int = int(os.getenv("MYSQL_PORT", "3306"))
+    mysql_user: str = os.getenv("MYSQL_USER", "bot")
+    mysql_password: str = os.getenv("MYSQL_PASSWORD", "bot")
+    mysql_db: str = os.getenv("MYSQL_DB", "bot")
+    mysql_pool_size: int = int(os.getenv("MYSQL_POOL_SIZE", "10"))
+    mysql_echo: bool = _bool("MYSQL_ECHO", False)
+    procurement_db: str = os.getenv("PROCUREMENT_MYSQL_DB", os.getenv("MYSQL_DB", "bot"))
+
+    def async_url(self) -> str:
+        return (
+            f"mysql+asyncmy://{self.mysql_user}:{self.mysql_password}"
+            f"@{self.mysql_host}:{self.mysql_port}/{self.mysql_db}"
+        )
+
+    def procurement_async_url(self) -> str:
+        return (
+            f"mysql+asyncmy://{self.mysql_user}:{self.mysql_password}"
+            f"@{self.mysql_host}:{self.mysql_port}/{self.procurement_db}"
+        )
 
 
 @dataclass

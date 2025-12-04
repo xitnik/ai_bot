@@ -9,6 +9,7 @@ import httpx
 from fastapi import FastAPI, HTTPException
 from pydantic import ValidationError
 
+import db
 from alternatives_agent import AlternativesAgent, _ingest_stub_catalog
 from alternatives_deep_models import (
     AlternativesDeepResearchPayload,
@@ -22,7 +23,7 @@ from config import get_settings
 from embeddings_client import EmbeddingsClient
 from events_logger import log_event
 from llm_client import chat
-from vector_index import InMemoryVectorStore, VectorStore
+from vector_index import MySQLVectorStore, VectorStore
 
 
 async def _safe_log_event(
@@ -389,11 +390,10 @@ def create_app(
 ) -> FastAPI:
     settings = get_settings()
     deep = getattr(settings, "deep_research", None)
-    vector_store = vector_store or InMemoryVectorStore()
+    vector_store = vector_store or MySQLVectorStore()
     embedder = embedder or EmbeddingsClient()
-    if alternatives_agent is None:
-        _ingest_stub_catalog(vector_store, embedder)
-        alternatives_agent = AlternativesAgent(vector_store, embedder)
+    seed_catalog = alternatives_agent is None
+    alternatives_agent = alternatives_agent or AlternativesAgent(vector_store, embedder)
 
     search_client = search_client or WebSearchClient(
         timeout_seconds=getattr(deep, "search_timeout_seconds", 8.0)
@@ -409,6 +409,12 @@ def create_app(
     )
 
     app = FastAPI()
+
+    @app.on_event("startup")
+    async def startup_event() -> None:
+        await db.init_db()
+        if seed_catalog:
+            await _ingest_stub_catalog(vector_store, embedder)
 
     @app.post(
         "/agents/alternatives/deep_research",
