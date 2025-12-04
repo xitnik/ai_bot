@@ -17,6 +17,8 @@ from metrics import REGISTRY
 from otel import get_tracer
 from rag.ingest import ingest_from_dir
 from rag.retriever import RagEngine
+from rag.pipeline import SessionContext as RagSessionContext
+from rag.pipeline import rag_retrieve
 
 _RAG_ENGINE: Optional[RagEngine] = None
 _SUPERVISOR = Supervisor()
@@ -46,14 +48,25 @@ async def enrich_message(message: Message) -> dict:
     normalized = message.text.lower().strip()
     entities = extract_entities(message.text)
 
-    rag = _get_rag_engine()
     snippets: List[str] = []
-    if rag:
-        try:
-            results = rag.retrieve(normalized, k=2)
-            snippets = [doc.text for doc, _ in results]
-        except Exception:
-            snippets = []
+    try:
+        rag_session = RagSessionContext(
+            user_id=message.user_id,
+            client_id=None,
+            product_id=None,
+            lang="ru",
+            entities=entities,
+        )
+        retrieved = await rag_retrieve(normalized, session=rag_session)
+        snippets = [item.document.text for item in retrieved]
+    except Exception:
+        rag = _get_rag_engine()
+        if rag:
+            try:
+                results = rag.retrieve(normalized, k=2)
+                snippets = [doc.text for doc, _ in results]
+            except Exception:
+                snippets = []
     return {"normalized_text": normalized, "entities": entities, "knowledge": snippets}
 
 

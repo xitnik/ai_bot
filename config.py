@@ -65,12 +65,25 @@ class DeepResearchSettings:
 
 
 @dataclass
+class RAGSettings:
+    default_mode: str = os.getenv("RAG_MODE", "basic")  # basic | self-rag | crag
+    max_selfrag_iterations: int = int(os.getenv("RAG_SELF_RAG_MAX_ITERS", "2"))
+    max_crag_retries: int = int(os.getenv("RAG_CRAG_MAX_RETRIES", "2"))
+    retriever_min_score: float = float(os.getenv("RAG_MIN_SCORE", "0.0"))
+    enable_knowledge_graph: bool = _bool("RAG_ENABLE_KG", True)
+    simple_query_max_tokens: int = int(os.getenv("RAG_SIMPLE_QUERY_MAX_TOKENS", "3"))
+    cache_enabled: bool = _bool("RAG_CACHE_ENABLED", True)
+    ner_cache_enabled: bool = _bool("NER_CACHE_ENABLED", True)
+
+
+@dataclass
 class Settings:
     llm: LLMSettings = LLMSettings()
     integrations: IntegrationSettings = IntegrationSettings()
     observability: ObservabilitySettings = ObservabilitySettings()
     database: DatabaseSettings = DatabaseSettings()
     deep_research: DeepResearchSettings = DeepResearchSettings()
+    rag: RAGSettings = RAGSettings()
 
 
 @lru_cache(maxsize=1)

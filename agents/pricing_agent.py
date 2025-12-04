@@ -5,6 +5,9 @@ from typing import Dict, List, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
+from rag.pipeline import SessionContext as RagSessionContext
+from rag.pipeline import rag_retrieve
+
 CURRENCY = "USD"
 
 SPECIES_MULTIPLIERS: Dict[str, float] = {
@@ -92,6 +95,7 @@ class PricingResponse(BaseModel):
     total: float
     discounts: List[str] = Field(default_factory=list)
     items: List[PricingItemBreakdown] = Field(default_factory=list)
+    context_snippets: List[str] = Field(default_factory=list)
 
 
 def mm_to_inches(value: float) -> float:
@@ -266,8 +270,29 @@ app = FastAPI()
 async def run_pricing(request: PricingRequest) -> PricingResponse:
     """Пошаговый расчет стоимости с учетом породы, обработки, отходов и скидок."""
     try:
-        return calculate_pricing(request.order_spec)
+        response = calculate_pricing(request.order_spec)
+        response.context_snippets = await _maybe_retrieve_pricing_context(request)
+        return response
     except HTTPException:
         raise
     except Exception as exc:  # pragma: no cover - защитная ветка
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+async def _maybe_retrieve_pricing_context(request: PricingRequest) -> List[str]:
+    """
+    Pulls RAG snippets when raw message is provided (for explanations).
+    Kept optional to avoid extra latency when not needed.
+    """
+    if not request.message:
+        return []
+    try:
+        session = RagSessionContext(
+            client_id=request.context.get("client_id") if isinstance(request.context, dict) else None,
+            product_id=request.context.get("product_id") if isinstance(request.context, dict) else None,
+            lang=request.context.get("lang") if isinstance(request.context, dict) else None,
+        )
+        retrieved = await rag_retrieve(request.message, session=session)
+        return [item.document.text for item in retrieved]
+    except Exception:
+        return []

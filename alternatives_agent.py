@@ -12,6 +12,8 @@ from alternatives_models import (
 )
 from embeddings_client import EmbeddingsClient
 from vector_index import InMemoryVectorStore, VectorStore
+from rag.pipeline import SessionContext as RagSessionContext
+from rag.pipeline import rag_retrieve
 
 DIMENSION_TOLERANCE_RATIO = 0.05
 PRICE_TOLERANCE_RATIO = 0.10
@@ -153,7 +155,21 @@ class AlternativesAgent:
                     reason=reason,
                 )
             )
-        return AlternativesResult(alternatives=alternatives)
+        context_snippets = await self._maybe_retrieve_docs(request)
+        return AlternativesResult(alternatives=alternatives, context_snippets=context_snippets)
+
+    async def _maybe_retrieve_docs(self, request: AlternativesRequest) -> List[str]:
+        if not request.use_rag_docs:
+            return []
+        try:
+            session = RagSessionContext(
+                product_id=request.hard_filters.get("sku") if isinstance(request.hard_filters, dict) else None,
+                lang="ru",
+            )
+            docs = await rag_retrieve(request.query_text, session=session)
+            return [doc.document.text for doc in docs]
+        except Exception:
+            return []
 
 
 def _ingest_stub_catalog(store: VectorStore, embedder: EmbeddingsClient) -> None:

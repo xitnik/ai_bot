@@ -23,6 +23,7 @@ class AlternativesRequest(BaseModel):
     hard_filters: Dict[str, Any] = Field(default_factory=dict)
     k: int = 5
     price_band: Optional[Literal["cheaper", "premium"]] = None
+    use_rag_docs: bool = False
 
     model_config = ConfigDict(extra="ignore")
 
@@ -40,6 +41,7 @@ class AlternativesResult(BaseModel):
     """Структура ответа агенту."""
 
     alternatives: List[AlternativeItem] = Field(default_factory=list)
+    context_snippets: List[str] = Field(default_factory=list)
 
 
 class Hit(BaseModel):
@@ -50,4 +52,3 @@ class Hit(BaseModel):
     metadata: Dict[str, Any]
 
     model_config = ConfigDict(frozen=True)
-

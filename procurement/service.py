@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Optional
 
@@ -8,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import schemas
 from .db import Offer, RFQ, RFQSpecRecord
+from rag.pipeline import SessionContext as RagSessionContext
+from rag.pipeline import rag_retrieve
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +20,7 @@ def compose_rfq(spec: schemas.RFQSpec, vendor: schemas.Vendor) -> dict:
     Формирует структурированный payload для отправки по email или API.
     """
 
-    return {
+    payload = {
         "recipient": vendor.address,
         "subject": f"RFQ: {spec.species} {spec.grade}",
         "greeting": f"Здравствуйте, {vendor.name}!",
@@ -33,6 +36,10 @@ def compose_rfq(spec: schemas.RFQSpec, vendor: schemas.Vendor) -> dict:
             " и условиями оплаты."
         ),
     }
+    references = _retrieve_rag_references(spec)
+    if references:
+        payload["references"] = references
+    return payload
 
 
 async def save_rfq(
@@ -113,6 +120,33 @@ async def get_offers_for_spec(spec_id: int, session: AsyncSession) -> list[Offer
         select(Offer).join(RFQ, RFQ.id == Offer.rfq_id).where(RFQ.spec_id == spec_id)
     )
     return list(result.scalars().all())
+
+
+def _retrieve_rag_references(spec: schemas.RFQSpec) -> list[dict[str, Any]]:
+    """
+    Sync helper to pull a couple of RAG snippets for the RFQ.
+    Falls back silently if retrieval fails.
+    """
+    try:
+        query = f"Условия поставки {spec.species} {spec.grade} {spec.delivery_terms}"
+
+        async def _run() -> list[dict[str, Any]]:
+            ctx = RagSessionContext(lang="ru")
+            docs = await rag_retrieve(query, session=ctx)
+            return [
+                {"id": d.document.id, "text": d.document.text[:300], "source": d.document.metadata.get("source")}
+                for d in docs
+            ]
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if loop and loop.is_running():
+            return []
+        return asyncio.run(_run())
+    except Exception:
+        return []
 
 
 async def fetch_rfq_with_spec(rfq_id: int, session: AsyncSession) -> tuple[RFQ, dict[str, Any]]:

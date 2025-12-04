@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from rag.ingest import Document
 from vector_index import InMemoryVectorStore
 
 
@@ -53,3 +54,14 @@ def test_knn_sorts_by_similarity() -> None:
 
     assert [hit.product_id for hit in hits] == ["first", "second"]
     assert hits[0].score > hits[1].score
+
+
+def test_document_search_respects_metadata_filters() -> None:
+    store = InMemoryVectorStore()
+    doc_ru = Document(id="ru", text="привет", metadata={"lang": "ru"}, embedding=[1.0, 0.0])
+    doc_en = Document(id="en", text="hello", metadata={"lang": "en"}, embedding=[0.0, 1.0])
+    store.add_documents([doc_ru, doc_en])
+
+    results = store.search([1.0, 0.0], filters={"lang": "ru"}, top_k=5)
+
+    assert [res.document.id for res in results] == ["ru"]

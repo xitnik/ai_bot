@@ -26,6 +26,8 @@ from sales_models import (
     StockToolInput,
 )
 from sales_tools_clients import SalesToolsClient
+from rag.pipeline import SessionContext as RagSessionContext
+from rag.pipeline import rag_retrieve
 
 # Глобальное хранилище сессий; позже можно заменить на Redis/БД.
 SESSION_STORE: Dict[str, Dict[str, Any]] = {}
@@ -94,8 +96,9 @@ class SalesAgentService:
         used_tools: List[str],
     ) -> PlannerOutput:
         # Собираем стартовые сообщения для GPT-5.
+        rag_snippets = await self._fetch_rag_knowledge(request)
         context_block = json.dumps(
-            {"context": request.context, "session_state": session_snapshot},
+            {"context": request.context, "session_state": session_snapshot, "rag": rag_snippets},
             ensure_ascii=False,
         )
         user_content = f"User message: {request.user_message}\nContext: {context_block}"
@@ -205,6 +208,27 @@ class SalesAgentService:
         except (ValidationError, json.JSONDecodeError) as exc:
             raise HTTPException(status_code=500, detail="planner_output_invalid") from exc
         return planner_output
+
+    async def _fetch_rag_knowledge(self, request: SalesRequest) -> List[Dict[str, Any]]:
+        """Retrieves top context snippets for the planner."""
+        try:
+            session = RagSessionContext(
+                client_id=request.context.get("client_id"),
+                product_id=request.context.get("product_id"),
+                lang=request.context.get("lang"),
+                metadata=request.context.get("metadata", {}),
+            )
+            retrieved = await rag_retrieve(request.user_message, session=session)
+            return [
+                {
+                    "id": item.document.id,
+                    "text": item.document.text,
+                    "source": item.document.metadata.get("source") or item.document.metadata.get("source_type"),
+                }
+                for item in retrieved
+            ]
+        except Exception:
+            return []
 
     async def _execute_tool_call(
         self,
