@@ -2,93 +2,37 @@ from __future__ import annotations
 
 import csv
 import json
-from dataclasses import dataclass, field
+import mimetypes
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
-DEFAULT_CHUNK_SIZE = 512
-DEFAULT_CHUNK_OVERLAP = 80
+from rag.chunking import ChunkingConfig, DocumentChunk, split_text_sliding_window
 
-
-def _default_tokenizer(text: str) -> List[str]:
-    """Very lightweight tokenizer: whitespace split with basic cleanup."""
-    return [token for token in text.replace("\n", " ").split(" ") if token.strip()]
-
-
-@dataclass
-class ChunkingConfig:
-    """Configuration controlling text chunking."""
-
-    chunk_size: int = DEFAULT_CHUNK_SIZE
-    overlap: int = DEFAULT_CHUNK_OVERLAP
-    tokenizer: Callable[[str], List[str]] = _default_tokenizer
-
-
-@dataclass
-class Document:
-    """Unified document representation used across ingestion and retrieval."""
-
-    id: str
-    text: str
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    embedding: Optional[List[float]] = None
-
-    @property
-    def doc_id(self) -> str:
-        # Backward-compatible alias for legacy retriever/tests.
-        return self.id
-
-    @property
-    def source(self) -> str:
-        return str(self.metadata.get("source", ""))
-
-
-DocumentChunk = Document  # alias for backward compatibility
-
-
-def chunk_text(text: str, config: ChunkingConfig | None = None) -> List[str]:
-    """
-    Splits text into overlapping chunks.
-
-    Args:
-        text: raw text to split.
-        config: chunking configuration (size in tokens and overlap).
-    """
-    cfg = config or ChunkingConfig()
-    tokens = cfg.tokenizer(text)
-    if not tokens:
-        return []
-
-    chunks: List[str] = []
-    step = max(1, cfg.chunk_size - cfg.overlap)
-    for start in range(0, len(tokens), step):
-        window = tokens[start : start + cfg.chunk_size]
-        if window:
-            chunks.append(" ".join(window))
-    return chunks
+# Backward-compatible alias used across the codebase.
+Document = DocumentChunk
 
 
 def _read_text_file(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def _read_pdf_file(path: Path) -> str:
-    """Best-effort PDF reader; falls back to empty string if no deps."""
+def _read_pdf_pages(path: Path) -> List[Tuple[int, str]]:
+    """Best-effort PDF reader; returns (page_idx, text) tuples."""
     try:
         import PyPDF2  # type: ignore
     except Exception:
-        return ""
-    text_parts: List[str] = []
+        return []
+    pages: List[Tuple[int, str]] = []
     try:
         with path.open("rb") as stream:
             reader = PyPDF2.PdfReader(stream)
-            for page in reader.pages:
+            for page_idx, page in enumerate(reader.pages):
                 extracted = page.extract_text() or ""
-                text_parts.append(extracted)
+                pages.append((page_idx, extracted))
     except Exception:
-        return ""
-    return "\n".join(text_parts)
+        return []
+    return pages
 
 
 def _read_docx_file(path: Path) -> str:
@@ -127,22 +71,47 @@ def _read_price_excel(path: Path) -> List[Dict[str, Any]]:
     return df.fillna("").to_dict(orient="records")
 
 
-def _build_doc_id(path: Path, idx: int) -> str:
-    return f"{path.stem}:{idx}"
+def _build_doc_id(path: Path, suffix: str | None = None) -> str:
+    base = path.stem
+    return f"{base}:{suffix}" if suffix is not None else base
 
 
 def _base_metadata(
     path: Path, source_type: str, extra: Dict[str, Any] | None = None
 ) -> Dict[str, Any]:
+    stat = path.stat() if path.exists() else None
     meta: Dict[str, Any] = {
-        "source": str(path),
+        "source": path.name,
+        "source_path": str(path.resolve()),
         "source_type": source_type,
+        "mime_type": mimetypes.guess_type(path.name)[0] or source_type,
         "lang": None,
         "ingested_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.utcfromtimestamp(stat.st_ctime).isoformat() if stat else None,
+        "updated_at": datetime.utcfromtimestamp(stat.st_mtime).isoformat() if stat else None,
     }
     if extra:
         meta.update(extra)
     return meta
+
+
+def _chunk_text(
+    text: str,
+    *,
+    doc_id: str,
+    page: Optional[int],
+    chunking: ChunkingConfig,
+    base_metadata: Dict[str, Any],
+) -> List[Document]:
+    return split_text_sliding_window(
+        text,
+        doc_id=doc_id,
+        page=page,
+        base_metadata=base_metadata,
+        chunk_size_tokens=chunking.chunk_size_tokens,
+        chunk_overlap_tokens=chunking.chunk_overlap_tokens,
+        tokenizer=chunking.tokenizer,
+    )
 
 
 def _documents_from_rows(
@@ -155,11 +124,10 @@ def _documents_from_rows(
     docs: List[Document] = []
     for idx, row in enumerate(rows):
         text = " ".join(f"{k}: {v}" for k, v in row.items() if v not in (None, ""))
-        for chunk_idx, chunk in enumerate(chunk_text(text, chunking)):
-            doc_id = f"{_build_doc_id(path, idx)}#{chunk_idx}"
-            metadata = _base_metadata(path, source_type, extra_metadata)
-            metadata.update({"row_index": idx})
-            docs.append(Document(id=doc_id, text=chunk, metadata=metadata))
+        doc_id = _build_doc_id(path, f"row_{idx}")
+        metadata = _base_metadata(path, source_type, extra_metadata)
+        metadata.update({"row_index": idx})
+        docs.extend(_chunk_text(text, doc_id=doc_id, page=None, chunking=chunking, base_metadata=metadata))
     return docs
 
 
@@ -191,20 +159,34 @@ def load_contract_documents(
     cfg = chunking or ChunkingConfig()
     file_path = Path(path)
     suffix = file_path.suffix.lower()
-    text = ""
+
     if suffix == ".txt":
         text = _read_text_file(file_path)
+        pages = [(None, text)] if text else []
     elif suffix == ".pdf":
-        text = _read_pdf_file(file_path)
+        pages = _read_pdf_pages(file_path)
     elif suffix in {".docx", ".doc"}:
         text = _read_docx_file(file_path)
-    if not text:
+        pages = [(None, text)] if text else []
+    else:
+        pages = []
+
+    if not pages:
         return []
+
     docs: List[Document] = []
-    for idx, chunk in enumerate(chunk_text(text, cfg)):
+    for page_idx, text in pages:
         metadata = _base_metadata(file_path, "contract", base_metadata)
-        metadata["page_chunk"] = idx
-        docs.append(Document(id=_build_doc_id(file_path, idx), text=chunk, metadata=metadata))
+        doc_id = _build_doc_id(file_path, str(page_idx) if page_idx is not None else None)
+        docs.extend(
+            _chunk_text(
+                text,
+                doc_id=doc_id,
+                page=page_idx if page_idx is not None else None,
+                chunking=cfg,
+                base_metadata=metadata,
+            )
+        )
     return docs
 
 
@@ -234,9 +216,8 @@ def load_messages_documents(
         }
         if base_metadata:
             meta.update(base_metadata)
-        for chunk_idx, chunk in enumerate(chunk_text(text, cfg)):
-            doc_id = f"{source_name}:{msg.get('id', idx)}#{chunk_idx}"
-            docs.append(Document(id=doc_id, text=chunk, metadata=meta))
+        doc_id = f"{source_name}:{msg.get('id', idx)}"
+        docs.extend(_chunk_text(text, doc_id=doc_id, page=None, chunking=cfg, base_metadata=meta))
     return docs
 
 

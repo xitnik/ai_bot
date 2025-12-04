@@ -78,6 +78,7 @@ async def test_rag_pipeline_answer_uses_chat(monkeypatch) -> None:
     )
     result = await pipeline.answer("pricing question", session=SessionContext(lang="en"))
 
-    assert result.answer == "final answer"
+    assert result.answer.startswith("final answer")
+    assert "d1" in result.answer
     assert result.used_documents and result.used_documents[0].document.id == "d1"
     assert "d1" in result.debug_info.get("retrieved_ids", [])

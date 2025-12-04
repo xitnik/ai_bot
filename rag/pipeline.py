@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Protocol, Sequence
 
 import db
 from config import get_settings
@@ -14,9 +14,17 @@ from ner import extract_entities
 from rag.corrective import CorrectiveRag, RetrievalEvaluator
 from rag.ingest import Document, ingest_from_dir
 from rag.knowledge_graph import KG
-from rag.retriever import HybridRetriever, RetrieverConfig
+from rag.retrieval import DenseRetriever, RetrievalConfig
 from rag.self_rag import SelfRagOrchestrator
-from vector_index import MySQLVectorStore, ScoredDocument, VectorIndex
+from rag.vector_store import VectorStoreIndexAdapter, build_vector_store
+from vector_index import ScoredDocument, VectorIndex
+
+
+class Retriever(Protocol):
+    async def retrieve(
+        self, query: str, filters: Optional[Dict[str, Any]] = None
+    ) -> List[ScoredDocument]:
+        ...
 
 
 @dataclass
@@ -43,7 +51,7 @@ class RagPipeline:
 
     def __init__(
         self,
-        retriever: HybridRetriever,
+        retriever: "Retriever",
         embedder: EmbeddingsClient,
         vector_index: VectorIndex,
         documents: Sequence[Document],
@@ -58,19 +66,25 @@ class RagPipeline:
     async def from_default_corpus(
         cls,
         data_dir: str = "fixtures/rag_docs",
-        retriever_config: Optional[RetrieverConfig] = None,
+        retrieval_config: Optional[RetrievalConfig] = None,
     ) -> "RagPipeline":
         await db.init_db()
         embedder = EmbeddingsClient()
         docs = ingest_from_dir(data_dir)
         documents_with_vectors = await _embed_documents(embedder, docs)
-        index = MySQLVectorStore()
+        store = build_vector_store()
+        index = VectorStoreIndexAdapter(store)
         await index.add_documents(documents_with_vectors)
+        rag_settings = get_settings().rag
+        dense_config = retrieval_config or RetrievalConfig(
+            knn_top_k=rag_settings.retriever_knn_top_k,
+            final_top_k=rag_settings.retriever_final_top_k,
+            reranker_enabled=rag_settings.reranker_enabled,
+            reranker_model=rag_settings.reranker_model,
+        )
         if get_settings().rag.enable_knowledge_graph:
             await KG.bulk_add_documents(documents_with_vectors)
-        retriever = HybridRetriever(
-            index, embedder, documents=documents_with_vectors, config=retriever_config
-        )
+        retriever = await DenseRetriever.build(store, embedder, config=dense_config)
         return cls(
             retriever=retriever,
             embedder=embedder,
@@ -244,8 +258,26 @@ def _format_context(retrieved: Sequence[ScoredDocument]) -> str:
     lines: List[str] = []
     for item in retrieved:
         meta = item.document.metadata or {}
+        doc_id = meta.get("doc_id") or item.document.id
         source = meta.get("source") or meta.get("source_type") or "doc"
-        lines.append(f"[doc:{item.document.id} | {source}] {item.document.text}")
+        page = meta.get("page")
+        page_suffix = f" p{page}" if page is not None else ""
+        lines.append(f"[doc:{doc_id}{page_suffix} | {source}] {item.document.text}")
+    return "\n".join(lines)
+
+
+def _format_sources(retrieved: Sequence[ScoredDocument]) -> str:
+    lines: List[str] = []
+    for item in retrieved:
+        meta = item.document.metadata or {}
+        doc_id = meta.get("doc_id") or item.document.id
+        page = meta.get("page")
+        title = meta.get("title") or meta.get("source") or meta.get("source_type") or ""
+        parts = [str(doc_id)]
+        if page is not None:
+            parts.append(f"page {page}")
+        label = " | ".join(parts)
+        lines.append(f"- {label}" + (f" — {title}" if title else ""))
     return "\n".join(lines)
 
 
@@ -263,29 +295,37 @@ def _llm_answer(
     query: str, retrieved: Sequence[ScoredDocument], entities: Sequence[Dict[str, Any]]
 ) -> str:
     context_blocks = _format_context(retrieved)
+    settings = get_settings().rag
     system_prompt = (
-        "You are a retrieval-augmented assistant for sales/procurement.\n"
-        "Use ONLY provided context snippets. Quote sources with [doc:id] markers.\n"
-        "If context is insufficient, say so explicitly."
+        "Ты — retrieval-augmented ассистент для продаж и закупок.\n"
+        "Отвечай только по предоставленным фрагментам контекста. "
+        "Если данных недостаточно, скажи об этом явно.\n"
+        "В конце добавь блок 'Источники:' со ссылками на doc_id и страницу."
     )
     user_prompt = (
         f"Question: {query}\n\n"
         f"Entities: {entities}\n\n"
         f"Context snippets:\n{context_blocks}\n\n"
-        "Answer in Russian, concise, include sources."
+        "Ответь по-русски, лаконично. Используй только факты из контекста."
     )
     try:
         completion = chat(
-            "gpt5",
+            getattr(settings, "llm_model", "gpt5"),
             [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            temperature=0,
+            temperature=getattr(settings, "llm_temperature", 0.2),
+            max_tokens=getattr(settings, "llm_max_tokens", 512),
         )
-        return _extract_text(completion)
+        answer = _extract_text(completion)
     except Exception:
         return "Не удалось получить ответ от LLM."
+
+    sources_block = _format_sources(retrieved)
+    if sources_block:
+        return f"{answer}\n\nИсточники:\n{sources_block}"
+    return answer
 
 
 _PIPELINE: Optional[RagPipeline] = None

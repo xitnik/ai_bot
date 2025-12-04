@@ -24,6 +24,13 @@ pytest
 python -m tools.eval_runner
 ```
 
+## RAG
+- Чанкинг token-aware в `rag/chunking.py`, ingest через `rag/ingest.py` (extras `.[ingest]`).
+- Векторное хранилище выбирается через `RAG_VECTOR_BACKEND` (`chroma`/`memory`/`mysql`) и `RAG_VECTOR_PERSIST_PATH`; extras `.[retrieval]` подтягивает chromadb/sentence-transformers.
+- Эмбеддинги: `RAG_EMBEDDING_MODEL` (ai-forever/FRIDA, BAAI/bge-m3, intfloat/multilingual-e5-large, Qwen3-Embedding-8B); sanity-check размера в клиенте.
+- Реранкер и генерация: `RAG_RERANKER_ENABLED`, `RAG_RERANKER_MODEL`, `RAG_LLM_MODEL`, `RAG_LLM_TEMPERATURE`, `RAG_LLM_MAX_TOKENS`, топы `RAG_RETRIEVER_KNN_TOP_K`/`RAG_RETRIEVER_FINAL_TOP_K`.
+- API: `POST /rag/query` (см. `rag/api.py`), агентский hook `rag/tool.py::RagTool`.
+
 ## Структура
 - `main.py` — gateway, сессии/логирование/метрики.
 - `sales_agent.py` — агент-продавец, LoRA-стилизация.

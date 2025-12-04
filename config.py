@@ -91,16 +91,34 @@ class DeepResearchSettings:
 
 
 @dataclass
+class RagVectorSettings:
+    backend: str = os.getenv("RAG_VECTOR_BACKEND", "chroma")
+    persist_path: str = os.getenv("RAG_VECTOR_PERSIST_PATH", "./data/chroma")
+    collection_name: str = os.getenv("RAG_VECTOR_COLLECTION", "rag_chunks")
+    qdrant_url: str = os.getenv("RAG_QDRANT_URL", "")
+    qdrant_api_key: str = os.getenv("RAG_QDRANT_API_KEY", "")
+    pgvector_dsn: str = os.getenv("RAG_PGVECTOR_DSN", "")
+
+
+@dataclass
 class RAGSettings:
     default_mode: str = os.getenv("RAG_MODE", "basic")  # basic | self-rag | crag
     max_selfrag_iterations: int = int(os.getenv("RAG_SELF_RAG_MAX_ITERS", "2"))
     max_crag_retries: int = int(os.getenv("RAG_CRAG_MAX_RETRIES", "2"))
     retriever_min_score: float = float(os.getenv("RAG_MIN_SCORE", "0.0"))
+    embedding_model: str = os.getenv("RAG_EMBEDDING_MODEL", "BAAI/bge-m3")
+    llm_model: str = os.getenv("RAG_LLM_MODEL", "qwen2.5-7b-instruct")
+    llm_temperature: float = float(os.getenv("RAG_LLM_TEMPERATURE", "0.2"))
+    llm_max_tokens: int = int(os.getenv("RAG_LLM_MAX_TOKENS", "512"))
+    retriever_knn_top_k: int = int(os.getenv("RAG_RETRIEVER_KNN_TOP_K", "50"))
+    retriever_final_top_k: int = int(os.getenv("RAG_RETRIEVER_FINAL_TOP_K", "8"))
+    reranker_enabled: bool = _bool("RAG_RERANKER_ENABLED", True)
+    reranker_model: str = os.getenv("RAG_RERANKER_MODEL", "BAAI/bge-reranker-v2-m3")
     enable_knowledge_graph: bool = _bool("RAG_ENABLE_KG", True)
     simple_query_max_tokens: int = int(os.getenv("RAG_SIMPLE_QUERY_MAX_TOKENS", "3"))
     cache_enabled: bool = _bool("RAG_CACHE_ENABLED", True)
     ner_cache_enabled: bool = _bool("NER_CACHE_ENABLED", True)
-
+    vector: RagVectorSettings = field(default_factory=RagVectorSettings)
 
 @dataclass
 class Settings:

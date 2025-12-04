@@ -23,6 +23,7 @@ from orchestrator import (
 )
 from otel import get_tracer
 from session_store import MySQLSessionStore
+from rag.api import router as rag_router
 
 app = FastAPI(title="Conversation Gateway")
 session_store = MySQLSessionStore()
@@ -38,6 +39,9 @@ async def startup() -> None:
 @app.on_event("shutdown")
 async def shutdown() -> None:
     await db.dispose_engine()
+
+
+app.include_router(rag_router)
 
 
 async def normalize_message(payload: Dict[str, Any]) -> Message:
