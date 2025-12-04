@@ -175,6 +175,14 @@ class InMemoryVectorStore:
             for item in results
         ]
 
+    # --- Internal helpers ---
+    def _filter_ids(self, filters: Dict[str, Any]) -> List[str]:
+        passed: List[str] = []
+        for doc_id, meta in self._metadata.items():
+            if _passes_filters(meta, filters):
+                passed.append(doc_id)
+        return passed
+
 
 class MySQLVectorStore(VectorStore):
     """Персистентный VectorStore на MySQL с вычислением косинусного сходства в приложении."""
@@ -241,7 +249,7 @@ class MySQLVectorStore(VectorStore):
 
         scored: List[ScoredDocument] = []
         for row in rows:
-            meta = dict(row.metadata or {})
+            meta = dict(row.meta or {})
             meta.setdefault("source", row.source)
             meta.setdefault("source_type", row.source_type)
             if row.client_id:
@@ -300,7 +308,7 @@ class MySQLVectorStore(VectorStore):
 
         hits: List[Hit] = []
         for row in rows:
-            meta = dict(row.metadata or {})
+            meta = dict(row.meta or {})
             meta.setdefault("species", row.species)
             meta.setdefault("grade", row.grade)
             meta.setdefault("price", row.price)
@@ -312,14 +320,6 @@ class MySQLVectorStore(VectorStore):
             hits.append(Hit(product_id=row.product_id, score=score, metadata=meta))
         hits.sort(key=lambda item: item.score, reverse=True)
         return hits[:k]
-
-    # --- Internal helpers ---
-    def _filter_ids(self, filters: Dict[str, Any]) -> List[str]:
-        passed: List[str] = []
-        for doc_id, meta in self._metadata.items():
-            if _passes_filters(meta, filters):
-                passed.append(doc_id)
-        return passed
 
 
 class QdrantVectorIndex:

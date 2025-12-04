@@ -131,6 +131,8 @@ class AlternativesAgent:
                 },
             }
             filters["dimensions"] = dims_range
+        # Цена используется при классификации, но не как жесткий фильтр, чтобы не потерять ближние варианты.
+        filters.pop("price", None)
 
         # Векторный поиск с жесткими фильтрами.
         hits = await self._store.knn_search(query_vector, request.k, filters)

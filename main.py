@@ -152,7 +152,9 @@ async def handle_webchat_message(
                     trace_id,
                     session_dto.session_id,
                 )
-            reply, degraded = await assemble_reply(message, decision, agent_results, context)
+            reply, degraded = await assemble_reply(
+                message, decision, agent_results, context, trace_id
+            )
 
             if degraded:
                 await log_event(

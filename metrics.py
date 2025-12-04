@@ -46,8 +46,9 @@ class MetricsRegistry:
             lines.append(f"# TYPE {name} counter")
             lines.append(f"{name} {counter.value}")
         for name, hist in self.histograms.items():
-            lines.append(f"# TYPE {name}_avg gauge")
-            lines.append(f"{name}_avg {hist.avg()}")
+            metric_name = name if name.endswith("_avg") else f"{name}_avg"
+            lines.append(f"# TYPE {metric_name} gauge")
+            lines.append(f"{metric_name} {hist.avg()}")
         return "\n".join(lines) + "\n"
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 import uuid
@@ -9,6 +10,7 @@ import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
 from pydantic import ValidationError
 from sqlalchemy.dialects.mysql import insert as mysql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 import db
@@ -55,8 +57,18 @@ class SalesSessionRepository:
 
     async def save(self, session_id: str, state: Dict[str, Any]) -> None:
         async with self._session_factory() as session:
-            stmt = mysql_insert(db.SalesSessionModel).values(session_id=session_id, state=state)
-            stmt = stmt.on_duplicate_key_update(state=stmt.inserted.state, updated_at=db.func.now())
+            dialect = session.bind.dialect.name if session.bind else ""
+            if dialect == "sqlite":
+                stmt = sqlite_insert(db.SalesSessionModel).values(
+                    session_id=session_id, state=state
+                )
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=[db.SalesSessionModel.session_id],
+                    set_={"state": stmt.excluded.state, "updated_at": db.func.now()},
+                )
+            else:
+                stmt = mysql_insert(db.SalesSessionModel).values(session_id=session_id, state=state)
+                stmt = stmt.on_duplicate_key_update(state=stmt.inserted.state, updated_at=db.func.now())
             await session.execute(stmt)
             await session.commit()
 

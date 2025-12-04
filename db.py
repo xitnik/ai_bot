@@ -20,6 +20,7 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy.dialects.mysql import insert as mysql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -37,13 +38,19 @@ def _default_db_url() -> str:
 
 def _build_engine(url: Optional[str] = None) -> AsyncEngine:
     settings = get_settings().database
-    return create_async_engine(
-        url or _default_db_url(),
-        echo=settings.mysql_echo,
-        pool_pre_ping=True,
-        pool_size=settings.mysql_pool_size,
-        future=True,
-    )
+    target_url = url or _default_db_url()
+    kwargs: dict[str, Any] = {
+        "echo": settings.mysql_echo,
+        "pool_pre_ping": True,
+        "future": True,
+    }
+    if target_url.startswith("sqlite"):
+        # SQLite драйвер не поддерживает pool_size/pool_pre_ping.
+        kwargs.pop("pool_pre_ping", None)
+        kwargs["connect_args"] = {"check_same_thread": False}
+    else:
+        kwargs["pool_size"] = settings.mysql_pool_size
+    return create_async_engine(target_url, **kwargs)
 
 
 # Глобальный движок; переинициализируется в configure_engine при тестах/смене окружения.
@@ -110,7 +117,7 @@ class DocumentModel(Base):
     client_id: Mapped[Optional[str]] = mapped_column(String(64), index=True, nullable=True)
     product_id: Mapped[Optional[str]] = mapped_column(String(64), index=True, nullable=True)
     lang: Mapped[Optional[str]] = mapped_column(String(8), index=True, nullable=True)
-    metadata: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    meta: Mapped[dict[str, Any]] = mapped_column("metadata", JSON, nullable=False, default=dict)
     embedding: Mapped[Optional[list[float]]] = mapped_column(JSON, nullable=True)
     embedding_model: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     ingested_at: Mapped[datetime] = mapped_column(
@@ -130,7 +137,7 @@ class ProductVectorModel(Base):
 
     product_id: Mapped[str] = mapped_column(String(128), primary_key=True)
     vector: Mapped[list[float]] = mapped_column(JSON, nullable=False)
-    metadata: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    meta: Mapped[dict[str, Any]] = mapped_column("metadata", JSON, default=dict)
     species: Mapped[Optional[str]] = mapped_column(String(64), index=True, nullable=True)
     grade: Mapped[Optional[str]] = mapped_column(String(32), index=True, nullable=True)
     price: Mapped[Optional[float]] = mapped_column(Numeric(12, 2), nullable=True)
@@ -224,8 +231,16 @@ async def touch_session_state(
 
 async def upsert_sales_session_state(session_id: str, state: dict[str, Any]) -> None:
     async with AsyncSessionLocal() as session:
-        stmt = mysql_insert(SalesSessionModel).values(session_id=session_id, state=state)
-        stmt = stmt.on_duplicate_key_update(state=stmt.inserted.state, updated_at=func.now())
+        dialect = session.bind.dialect.name if session.bind else ""
+        if dialect == "sqlite":
+            stmt = sqlite_insert(SalesSessionModel).values(session_id=session_id, state=state)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=[SalesSessionModel.session_id],
+                set_={"state": stmt.excluded.state, "updated_at": func.now()},
+            )
+        else:
+            stmt = mysql_insert(SalesSessionModel).values(session_id=session_id, state=state)
+            stmt = stmt.on_duplicate_key_update(state=stmt.inserted.state, updated_at=func.now())
         await session.execute(stmt)
         await session.commit()
 

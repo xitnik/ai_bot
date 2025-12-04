@@ -5,6 +5,8 @@
 2. Установите зависимости:
    ```
    pip install -e .
+   # для ingest/RAG дополнительных форматов добавьте extras:
+   pip install -e ".[ingest,retrieval]"
    ```
 3. Запустите сервисы:
    ```
@@ -31,6 +33,10 @@ python -m tools.eval_runner
 - `rag/*`, `ner.py` — baseline RAG/NER.
 - `training/*` — toy LoRA pipeline.
 - `docs/*` — архитектура, операционные инструкции, шаблоны актов/отчетов.
+
+## Конфигурация БД
+- По умолчанию сервисы используют SQLite (`DATABASE_URL`, `PROCUREMENT_DATABASE_URL` из `.env.example`), что позволяет запуск без MySQL-драйверов.
+- Для продакшн MySQL задайте `DATABASE_URL`/`PROCUREMENT_DATABASE_URL` или поля `MYSQL_*`/`PROCUREMENT_MYSQL_DB` и установите драйвер `asyncmy`.
 
 ## Агент deep research для альтернатив
 - Запуск: `uvicorn agents.alternatives_deep_research_agent:app --reload --port 8004`.

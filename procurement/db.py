@@ -73,7 +73,13 @@ def _database_url() -> str:
 def create_engine(url: Optional[str] = None) -> AsyncEngine:
     """Создает новый AsyncEngine для заданного URL."""
 
-    return create_async_engine(url or _database_url(), echo=False, future=True, pool_pre_ping=True)
+    target_url = url or _database_url()
+    kwargs = {"echo": False, "future": True}
+    if target_url.startswith("sqlite"):
+        kwargs["connect_args"] = {"check_same_thread": False}
+    else:
+        kwargs["pool_pre_ping"] = True
+    return create_async_engine(target_url, **kwargs)
 
 
 engine: AsyncEngine = create_engine()

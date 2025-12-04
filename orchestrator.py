@@ -246,7 +246,7 @@ async def _register_fallback_lead(
 
 
 async def assemble_reply(
-    message: Message, decision: dict, agent_results: dict, context: dict
+    message: Message, decision: dict, agent_results: dict, context: dict, trace_id: str
 ) -> tuple[str, bool]:
     """Собираем финальный ответ; bool показывает наличие деградации."""
     fallback_needed = any(res.get("status") == "error" for res in agent_results.values())
@@ -259,7 +259,7 @@ async def assemble_reply(
             errors.append(f"{agent}:{err}")
     if fallback_needed:
         REGISTRY.counter("fallback_total").inc()
-        await _register_fallback_lead(message, decision, agent_results, context, context.get("trace_id", ""))
+        await _register_fallback_lead(message, decision, agent_results, context, trace_id)
         msg = "Мы обработали запрос, но часть сервисов недоступна. Скоро вернемся с деталями."
         if errors:
             msg += f" ({'; '.join(errors)})"
