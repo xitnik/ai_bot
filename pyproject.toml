@@ -40,3 +40,17 @@ warn_unused_configs = true
 line-length = 100
 target-version = "py311"
 select = ["E", "F", "I", "B"]
+
+[tool.setuptools.packages.find]
+# Explicitly list the packages we want to ship; this avoids setuptools' flat-layout
+# auto-discovery error when multiple top-level packages are present.
+include = [
+  "agents*",
+  "rag*",
+  "procurement*",
+  "training*",
+  "integrations*",
+  "dashboards*",
+  "tools*",
+]
+namespaces = true
