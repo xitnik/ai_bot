@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Optional
 
@@ -104,12 +104,12 @@ class RAGSettings:
 
 @dataclass
 class Settings:
-    llm: LLMSettings = LLMSettings()
-    integrations: IntegrationSettings = IntegrationSettings()
-    observability: ObservabilitySettings = ObservabilitySettings()
-    database: DatabaseSettings = DatabaseSettings()
-    deep_research: DeepResearchSettings = DeepResearchSettings()
-    rag: RAGSettings = RAGSettings()
+    llm: LLMSettings = field(default_factory=LLMSettings)
+    integrations: IntegrationSettings = field(default_factory=IntegrationSettings)
+    observability: ObservabilitySettings = field(default_factory=ObservabilitySettings)
+    database: DatabaseSettings = field(default_factory=DatabaseSettings)
+    deep_research: DeepResearchSettings = field(default_factory=DeepResearchSettings)
+    rag: RAGSettings = field(default_factory=RAGSettings)
 
 
 @lru_cache(maxsize=1)

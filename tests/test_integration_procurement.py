@@ -49,7 +49,7 @@ async def test_happy_path_best_offer_selection(client, monkeypatch):
     assert len(rfq_ids) == 3
 
     # Парсим ответы трех вендоров.
-    for rfq_id, key in zip(rfq_ids, ["premium", "cheap", "fast"], strict=False):
+    for rfq_id, key in zip(rfq_ids, ["premium", "cheap", "fast"]):
         resp = await async_client.post(
             "/agents/procurement/parse_reply", json={"rfq_id": rfq_id, "raw_text": key}
         )

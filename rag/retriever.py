@@ -170,7 +170,7 @@ class HybridRetriever:
         except Exception:
             return candidates
         reranked: List[ScoredDocument] = []
-        for cand, score in zip(top_candidates, scores, strict=False):
+        for cand, score in zip(top_candidates, scores):
             reranked.append(ScoredDocument(document=cand.document, score=float(score)))
         reranked.sort(key=lambda item: item.score, reverse=True)
         return reranked + candidates[len(top_candidates) :]

@@ -30,7 +30,7 @@ def offline_conversion_score(predictions: List[str], references: List[str]) -> f
         return 0.0
     matches = sum(
         1
-        for p, r in zip(predictions, references, strict=False)
+        for p, r in zip(predictions, references)
         if p.strip().lower() == r.strip().lower()
     )
     return matches / len(references)
